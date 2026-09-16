@@ -1,0 +1,29 @@
+ {
+   "version": "3.0.0",
+   "experimentId": "NARMA10",
+   "description": "NARMA-10 nonlinear autoregressive moving average",
+   "mfmConfig": {
+     "version": "3.0.0",
+     "Lx": 100,
+     "Ly": 100,
+     "Nmax": 300,
+     "dt": 0.1,
+     "seed": 102,
+     "Qmax": 1000,
+     "R_s_min": 0.5,
+     "R_s_max": 5.0,
+     "boundary": "periodic"
+   },
+   "experimentConfig": {
+     "version": "3.0.0",
+     "duration": 3000,
+     "checkpointInterval": 100,
+     "errorMeasure": "mse",
+     "readout": {"type": "linear"}
+   },
+   "inputSignal": {"type": "random", "amplitude": 0.5},
+   "outputReadout": {"type": "narma", "order": 10},
+   "duration": 3000,
+     "checkpointInterval": 100,
+     "metricsToCollect": ["predictionError", "normalizedMSE"]
+ }

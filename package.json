@@ -1,14 +1,21 @@
-{
-  "name": "cepc-monorepo",
-  "private": true,
-  "packageManager": "pnpm@8.0.0",
-  "scripts": {
-    "test": "pnpm --filter './src/*' test",
-    "lint": "pnpm --filter './src/*' lint",
-    "build": "pnpm --filter './src/react-ui' build",
-    "deploy": "pnpm --filter './src/react-ui' run build"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3"
-  }
-}
+ {
+   "name": "cepc-monorepo",
+   "private": true,
+   "packageManager": "pnpm@8.0.0",
+   "scripts": {
+     "test": "pnpm --filter './src/*' test",
+     "lint": "pnpm --filter './src/*' lint",
+     "build": "pnpm --filter './src/react-ui' build",
+     "deploy": "pnpm --filter './src/react-ui' run build"
+   },
+   "devDependencies": {
+     "typescript": "^5.9.3",
+     "eslint": "^8.57.1",
+     "prettier": "^3.0.0",
+     "@typescript-eslint/eslint-plugin": "^6.0.0",
+     "@typescript-eslint/parser": "^6.0.0",
+     "eslint-plugin-react": "^7.33.0",
+     "eslint-plugin-react-hooks": "^4.6.0",
+     "eslint-config-prettier": "^9.0.0"
+   }
+ }

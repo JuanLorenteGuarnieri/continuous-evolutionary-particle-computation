@@ -1,0 +1,29 @@
+ {
+   "version": "3.0.0",
+   "experimentId": "MackeyGlass",
+   "description": "Mackey-Glass chaotic time series prediction",
+   "mfmConfig": {
+     "version": "3.0.0",
+     "Lx": 100,
+     "Ly": 100,
+     "Nmax": 300,
+     "dt": 0.1,
+     "seed": 103,
+     "Qmax": 1000,
+     "R_s_min": 0.5,
+     "R_s_max": 5.0,
+     "boundary": "periodic"
+   },
+   "experimentConfig": {
+     "version": "3.0.0",
+     "duration": 3000,
+     "checkpointInterval": 100,
+     "errorMeasure": "mse",
+     "readout": {"type": "linear"}
+   },
+   "inputSignal": {"type": "mackeyglass", "params": {"beta": 0.2, "gamma": 0.1, "n": 10, "tau": 17}},
+   "outputReadout": {"type": "prediction", "horizon": 1},
+   "duration": 3000,
+     "checkpointInterval": 100,
+     "metricsToCollect": ["predictionError", "correlation"]
+ }
