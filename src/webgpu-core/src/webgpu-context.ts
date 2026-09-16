@@ -1,1 +1,38 @@
-export class WebGPUContext {\n  public async init(canvas: HTMLCanvasElement | OffscreenCanvas) {\n    if (!navigator.gpu) throw new Error('WebGPU not supported');\n    const adapter = await navigator.gpu.requestAdapter();\n    if (!adapter) throw new Error('No adapter');\n    const device = await adapter.requestDevice();\n    \n    // Configure the canvas for WebGPU\n    const context = canvas.getContext('webgpu');\n    const format = navigator.gpu.getPreferredCanvasFormat();\n    context.configure({\n      device,\n      format,\n      alphaMode: 'opaque'\n    });\n    \n    return { adapter, device, context, format };\n  }\n}\n\nexport type GPUBufferUsage = number;\n\nexport const createBuffer = (device: GPUDevice, size: number, usage: GPUBufferUsage) => {\n  return device.createBuffer({ size, usage });\n};\n\nexport const createBindGroupLayout = (device: GPUDevice, entries: GPUBindGroupLayoutEntry[]): GPUBindGroupLayout => {\n  return device.createBindGroupLayout({ entries });\n};\n\nexport const createBindGroup = (device: GPUDevice, layout: GPUBindGroupLayout, entries: GPUBindGroupEntry[]): GPUBindGroup => {\n  return device.createBindGroup({ layout, entries });\n};\n\nexport const createPipelineLayout = (device: GPUDevice, bindGroupLayouts: GPUBindGroupLayout[]): GPUPipelineLayout => {\n  return device.createPipelineLayout({ bindGroupLayouts });\n};\n
+export class WebGPUContext {
+  public async init(canvas: HTMLCanvasElement | OffscreenCanvas) {
+    if (!navigator.gpu) throw new Error('WebGPU not supported');
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('No adapter');
+    const device = await adapter.requestDevice();
+    
+    // Configure the canvas for WebGPU
+    const context = canvas.getContext('webgpu');
+    const format = navigator.gpu.getPreferredCanvasFormat();
+    context.configure({
+      device,
+      format,
+      alphaMode: 'opaque'
+    });
+    
+    return { adapter, device, context, format };
+  }
+}
+
+export type GPUBufferUsage = number;
+
+export const createBuffer = (device: GPUDevice, size: number, usage: GPUBufferUsage) => {
+  return device.createBuffer({ size, usage });
+};
+
+export const createBindGroupLayout = (device: GPUDevice, entries: GPUBindGroupLayoutEntry[]): GPUBindGroupLayout => {
+  return device.createBindGroupLayout({ entries });
+};
+
+export const createBindGroup = (device: GPUDevice, layout: GPUBindGroupLayout, entries: GPUBindGroupEntry[]): GPUBindGroup => {
+  return device.createBindGroup({ layout, entries });
+};
+
+export const createPipelineLayout = (device: GPUDevice, bindGroupLayouts: GPUBindGroupLayout[]): GPUPipelineLayout => {
+  return device.createPipelineLayout({ bindGroupLayouts });
+};
+

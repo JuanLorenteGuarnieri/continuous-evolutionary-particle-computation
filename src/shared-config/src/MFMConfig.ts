@@ -64,7 +64,7 @@ export class MFMConfig implements MFMConfigData {
     return { ...this };
   }
 
-  public static fromJSON(obj: any): MFMConfig {
+  public static fromJSON(obj: Record<string, unknown>): MFMConfig {
     if (!MFMConfig.validate(obj)) throw new Error('Invalid MFMConfig JSON');
     return new MFMConfig(obj);
   }

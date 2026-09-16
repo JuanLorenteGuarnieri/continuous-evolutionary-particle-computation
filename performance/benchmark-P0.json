@@ -1,0 +1,8 @@
+ {
+   "manifestId": "P0-fixed-non-evolving",
+   "steps": 500,
+   "durationMs": 10.5,
+   "latencyMs": 0.021,
+   "throughput": 761.9,
+   "particles": 16
+ }

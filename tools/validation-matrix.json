@@ -1,0 +1,35 @@
+ {
+   "tests": [
+     {
+       "id": "P0-small",
+       "manifest": "configs/experiments/P0-manifest.json",
+       "seeds": [42, 43, 44],
+       "duration": 100,
+       "tolerances": {
+         "integer": "exact",
+         "float": { "relative": 1e-6, "absolute": 1e-9 }
+       }
+     },
+     {
+       "id": "P1-health",
+       "manifest": "configs/experiments/P1-manifest.json",
+       "seeds": [43],
+       "duration": 200,
+       "tolerances": {
+         "integer": "exact",
+         "float": { "relative": 1e-6, "absolute": 1e-9 }
+       }
+     },
+     {
+       "id": "DelayMemory",
+       "manifest": "configs/experiments/DelayMemory-manifest.json",
+       "seeds": [100],
+       "duration": 500,
+       "tolerances": {
+         "statistical": "95% CI"
+       }
+     }
+   ],
+   "backends": ["cpu", "gpu"],
+   "reference": "cpu"
+ }

@@ -68,6 +68,3 @@ Pushes to the main branch will automatically trigger the CI/CD pipeline which:
 ## License
 License to be determined. Please contact the maintainers for usage terms.
 
-
-## Validation
-Scientific validation and performance characterization are documented in [docs/validation/validation-report.md](docs/validation/validation-report.md).

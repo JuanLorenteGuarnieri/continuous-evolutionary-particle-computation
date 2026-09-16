@@ -21,5 +21,5 @@ export declare class PopulationState implements PopulationStateData {
     } | undefined;
     forEachParticle(fn: (id: ParticleID, genome: Genome, state: ParticleState) => void): void;
     toJSON(): object;
-    static fromJSON(obj: any): PopulationState;
+    static fromJSON(obj: Record<string, unknown>): PopulationState;
 }

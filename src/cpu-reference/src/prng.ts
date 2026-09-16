@@ -23,11 +23,11 @@ export class XorShift32 implements PRNG {
   nextInt(max: number): number {
     return Math.floor(this.nextFloat() * max);
   }
-  clone(): PRNG {
-    const c = new XorShift32(0);
-    (c as any).state = this.state;
-    return c;
-  }
+ clone(): PRNG {
+   const c = new XorShift32(0);
+    c.state = this.state;
+   return c;
+ }
   getState(): number { return this.state; }
   setState(s: number): void { this.state = s >>> 0; }
 }

@@ -1,0 +1,4 @@
+ manifest,particles,steps,latencyMs,throughput
+ P0-fixed-non-evolving,16,500,0.021,761.9
+ P1-health-death,16,500,0.022,727.3
+ DelayMemory,16,500,0.023,695.7

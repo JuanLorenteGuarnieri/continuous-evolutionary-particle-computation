@@ -22,5 +22,5 @@ export declare class ParticleState implements ParticleStateData {
     reset(): ParticleState;
     isValid(Qmax?: number, Hmax?: number): boolean;
     toJSON(): object;
-    static fromJSON(obj: any): ParticleState;
+    static fromJSON(obj: Record<string, unknown>): ParticleState;
 }

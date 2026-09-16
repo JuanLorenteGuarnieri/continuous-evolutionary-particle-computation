@@ -3,13 +3,13 @@
  import { MetricsCollector } from './MetricsCollector.js';
  import { PopulationState, Genome, ParticleState, ParticleID } from '@cepc/shared-config';
  
- export interface ExperimentResult {
-   manifestId: string;
-   steps: number;
-   metrics: Record<string, number[]>;
-   finalPopulation: PopulationState;
-   config: any;
- }
+export interface ExperimentResult {
+  manifestId: string;
+  steps: number;
+  metrics: Record<string, number[]>;
+  finalPopulation: PopulationState;
+  config: Record<string, unknown>;
+}
  
 export class ExperimentRunner {
   private metricsCollector = new MetricsCollector();
@@ -107,11 +107,11 @@ export class ExperimentRunner {
     return result;
   }
  
-  async runSweep(params: any): Promise<any> {
+  async runSweep(params: Record<string, unknown>): Promise<unknown> {
     return { swept: true };
   }
 
-  async runReplicates(n: number): Promise<any> {
+  async runReplicates(n: number): Promise<unknown[]> {
     const results = [];
     for (let i = 0; i < n; i++) {
       const res = await this.run();

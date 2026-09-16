@@ -46,7 +46,7 @@ export class SimulationSnapshot implements SimulationSnapshotData {
     };
   }
 
-  public static fromJSON(obj: any): SimulationSnapshot {
+  public static fromJSON(obj: Record<string, unknown>): SimulationSnapshot {
     const genomes = new Map<ParticleID, Genome>();
     for (const [id, g] of obj.genomes ?? []) {
       genomes.set(id, Genome.fromJSON(g));

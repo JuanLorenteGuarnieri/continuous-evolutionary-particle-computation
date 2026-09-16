@@ -3,7 +3,7 @@ export class MfmWebGPUStepper {
   async init() {}
   async step() {}
   async saveState() { return {}; }
-  async loadState(state: any) {}
+  async loadState(state: Record<string, unknown>) {}
 }
 export type WebGPUMFMConfig = {
   Lx: number;

@@ -33,13 +33,13 @@ export class ParticleState implements ParticleStateData {
   public static validate(obj: unknown): obj is ParticleStateData {
     if (typeof obj !== 'object' || obj === null) return false;
     const o = obj as Record<string, unknown>;
-    return (
-      typeof o.version === 'string' &&
-      typeof o.position === 'object' && o.position !== null &&
-      typeof (o.position as any).x === 'number' && typeof (o.position as any).y === 'number' &&
-      typeof o.velocity === 'object' && o.velocity !== null &&
-      typeof (o.velocity as any).x === 'number' && typeof (o.velocity as any).y === 'number' &&
-      typeof o.health === 'number' && o.health >= 0 &&
+   return (
+     typeof o.version === 'string' &&
+     typeof o.position === 'object' && o.position !== null &&
+      typeof (o.position as Record<string, unknown>).x === 'number' && typeof (o.position as Record<string, unknown>).y === 'number' &&
+     typeof o.velocity === 'object' && o.velocity !== null &&
+      typeof (o.velocity as Record<string, unknown>).x === 'number' && typeof (o.velocity as Record<string, unknown>).y === 'number' &&
+     typeof o.health === 'number' && o.health >= 0 &&
       typeof o.charge === 'number' && Number.isInteger(o.charge) && o.charge >= 0 &&
       o.senderSet instanceof Set &&
       o.prevSenderSet instanceof Set
@@ -86,7 +86,7 @@ export class ParticleState implements ParticleStateData {
     };
   }
 
-  public static fromJSON(obj: any): ParticleState {
+  public static fromJSON(obj: Record<string, unknown>): ParticleState {
     return new ParticleState({
       version: obj.version,
       position: obj.position,

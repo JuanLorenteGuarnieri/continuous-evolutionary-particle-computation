@@ -2,12 +2,15 @@
    "name": "cepc-monorepo",
    "private": true,
    "packageManager": "pnpm@8.0.0",
-   "scripts": {
-     "test": "pnpm --filter './src/*' test",
-     "lint": "pnpm --filter './src/*' lint",
-     "build": "pnpm --filter './src/react-ui' build",
-     "deploy": "pnpm --filter './src/react-ui' run build"
-   },
+  "scripts": {
+    "test": "pnpm --filter './src/*' test",
+    "lint": "pnpm --filter './src/*' lint",
+    "build": "pnpm --filter './src/react-ui' build",
+    "deploy": "pnpm --filter './src/react-ui' run build",
+    "validate:subset": "node tools/validate-trajectory.js configs/experiments/P0-manifest.json",
+    "validate:full": "node tools/validate-matrix.js",
+    "benchmark": "node tools/benchmark.js configs/experiments/P0-manifest.json"
+  },
    "devDependencies": {
      "typescript": "^5.9.3",
      "eslint": "^8.57.1",

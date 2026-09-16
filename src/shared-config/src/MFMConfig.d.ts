@@ -25,5 +25,5 @@ export declare class MFMConfig implements MFMConfigData {
     static validate(obj: unknown): obj is MFMConfigData;
     validate(): void;
     toJSON(): MFMConfigData;
-    static fromJSON(obj: any): MFMConfig;
+    static fromJSON(obj: Record<string, unknown>): MFMConfig;
 }

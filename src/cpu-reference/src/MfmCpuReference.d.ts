@@ -7,6 +7,6 @@ export declare class MfmCpuReference {
     constructor(config: MFMConfig, population: PopulationState, seed?: number);
     step(): PopulationState;
     run(steps: number): PopulationState[];
-    getState(): any;
-    setState(state: any): void;
+    getState(): unknown;
+    setState(state: Record<string, unknown>): void;
 }

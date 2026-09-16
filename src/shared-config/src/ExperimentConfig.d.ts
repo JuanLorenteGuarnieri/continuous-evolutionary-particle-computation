@@ -15,5 +15,5 @@ export declare class ExperimentConfig implements ExperimentConfigData {
     static validate(obj: unknown): obj is ExperimentConfigData;
     validate(): void;
     toJSON(): ExperimentConfigData;
-    static fromJSON(obj: any): ExperimentConfig;
+    static fromJSON(obj: Record<string, unknown>): ExperimentConfig;
 }

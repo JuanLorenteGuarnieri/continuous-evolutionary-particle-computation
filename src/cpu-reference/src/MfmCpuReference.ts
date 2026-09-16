@@ -73,19 +73,19 @@ export class MfmCpuReference {
     return traj;
   }
 
-  public getState(): any {
+  public getState(): unknown {
     return {
       timestep: this.timestep,
       population: this.population.toJSON(),
-      rngState: (this.rng as any).getState?.(),
+      rngState: (this.rng as unknown as { getState?: () => unknown }).getState?.(),
     };
   }
 
-  public setState(state: any): void {
+  public setState(state: Record<string, unknown>): void {
     this.timestep = state.timestep ?? 0;
     this.population = PopulationState.fromJSON(state.population);
-    if (state.rngState && (this.rng as any).setState) {
-      (this.rng as any).setState(state.rngState);
+    if (state.rngState && (this.rng as unknown as { setState?: (s: unknown) => void }).setState) {
+      (this.rng as unknown as { setState: (s: unknown) => void }).setState(state.rngState);
     }
   }
 }

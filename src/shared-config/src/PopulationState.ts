@@ -70,7 +70,7 @@ export class PopulationState implements PopulationStateData {
     };
   }
 
-  public static fromJSON(obj: any): PopulationState {
+  public static fromJSON(obj: Record<string, unknown>): PopulationState {
     const genomes = new Map<ParticleID, Genome>();
     for (const [id, g] of obj.genomes ?? []) {
       genomes.set(id, Genome.fromJSON(g));

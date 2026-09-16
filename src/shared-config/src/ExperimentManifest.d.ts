@@ -27,5 +27,5 @@ export declare class ExperimentManifest implements ExperimentManifestData {
     static validate(obj: unknown): obj is ExperimentManifestData;
     validate(): void;
     toJSON(): object;
-    static fromJSON(obj: any): ExperimentManifest;
+    static fromJSON(obj: Record<string, unknown>): ExperimentManifest;
 }

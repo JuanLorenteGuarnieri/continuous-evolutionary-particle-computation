@@ -78,7 +78,7 @@ export class ExperimentManifest implements ExperimentManifestData {
     };
   }
 
-  public static fromJSON(obj: any): ExperimentManifest {
+  public static fromJSON(obj: Record<string, unknown>): ExperimentManifest {
     const mfm = MFMConfig.fromJSON(obj.mfmConfig);
     const exp = ExperimentConfig.fromJSON(obj.experimentConfig);
     return new ExperimentManifest({

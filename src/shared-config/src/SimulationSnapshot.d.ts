@@ -17,5 +17,5 @@ export declare class SimulationSnapshot implements SimulationSnapshotData {
     constructor(data?: Partial<SimulationSnapshotData>);
     static validate(obj: unknown): boolean;
     toJSON(): object;
-    static fromJSON(obj: any): SimulationSnapshot;
+    static fromJSON(obj: Record<string, unknown>): SimulationSnapshot;
 }
