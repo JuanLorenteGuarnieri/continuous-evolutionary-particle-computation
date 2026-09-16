@@ -5,7 +5,8 @@
   "scripts": {
     "test": "pnpm --filter './src/*' test",
     "lint": "pnpm --filter './src/*' lint",
-    "build": "pnpm --filter './src/react-ui' build"
+    "build": "pnpm --filter './src/react-ui' build",
+    "deploy": "pnpm --filter './src/react-ui' run build"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

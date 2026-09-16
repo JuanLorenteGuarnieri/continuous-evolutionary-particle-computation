@@ -7,41 +7,57 @@ The current repository hosts design documentation and will host the implementati
 
 ## Project Status
 - **Stages I‑IV**: Complete (conceptual foundations, formalization, analysis, experimental design)
-- **Stage V**: Reference implementation (next)
-- **Stages VI‑VII**: Initial experiments and paradigm investigation (pending)
+- **Stage V**: Reference implementation (complete)
+- **Stages VI‑VIII**: Initial experiments, paradigm investigation, and deployment (in progress)
 
-See `docs/Research_Roadmap_Stages_I-VII.md` for details.
+See docs/Research_Roadmap_Stages_I-VII.md for details.
 
 ## Repository Structure
-- `docs/`: Design and research documentation (Technical Framework, Minimal Formal Model, Reference Implementation, Experimental Design, etc.)
-- `src/`: Source code (to be created)
-  - `cpu-reference/`: TypeScript reference implementation
-  - `cpp-oracle/`: C++20 independent validation
-  - `webgpu-core/`: WebGPU GPU backend
-  - `experiment-api/`: Stage IV experiment orchestration
-  - `shared-config/`: Immutable model schema and constants
-  - `react-ui/`: Browser UI (React + TypeScript)
-  - `web-worker/`: Off‑thread computation
-  - `build/`, `tests/`: Build and test scripts
+- docs/: Design and research documentation (Technical Framework, Minimal Formal Model, Reference Implementation, Experimental Design, etc.)
+- src/: Source code
+  - cpu-reference/: TypeScript reference implementation
+  - cpp-oracle/: C++20 independent validation
+  - webgpu-core/: WebGPU GPU backend
+  - webgpu-mfm/: WebGPU MFM v3 implementation
+  - experiment-api/: Stage IV experiment orchestration
+  - shared-config/: Immutable model schema and constants
+  - eact-ui/: Browser UI (React + TypeScript)
+  - web-worker/: Off‑thread computation
+  - uild/, 	ests/: Build and test scripts
 
 ## Getting Started
 The implementation is in progress. To set up the TypeScript parts once the source is present:
-```bash
-npm install
-npm run dev
-```
+`ash
+pnpm install
+pnpm run dev
+`
 For the C++ oracle:
-```bash
-cmake -S . -B build
+`ash
+cmake -S src/cpp-oracle -B build
 cmake --build build
 ctest --test-dir build
-```
+`
 Linting and tests:
-```bash
-npm run lint
-npm test
-```
-See `AGENTS.md` for full contributor guidelines and `docs/Reference_Implementation.md` for the detailed implementation plan.
+`ash
+pnpm run lint
+pnpm test
+`
+See AGENTS.md for full contributor guidelines and docs/Reference_Implementation.md for the detailed implementation plan.
+
+## Deployment
+The platform can be deployed to GitHub Pages using the CI/CD pipeline or manually:
+
+### Manual Deployment
+`ash
+pnpm install
+pnpm run deploy
+`
+
+### Automatic Deployment
+Pushes to the main branch will automatically trigger the CI/CD pipeline which:
+1. Runs linting, unit tests, and behavioral tests
+2. Builds the React UI and WebGPU simulation
+3. Deploys to GitHub Pages at https://[username].github.io/continuous-evolutionary-particle-computation/
 
 ## Key Design Principles
 - **Scientific integrity**: The MFM v3 specification is frozen; implementation must validate against it.
@@ -51,3 +67,4 @@ See `AGENTS.md` for full contributor guidelines and `docs/Reference_Implementati
 
 ## License
 License to be determined. Please contact the maintainers for usage terms.
+
