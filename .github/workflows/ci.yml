@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      - name: Install dependencies
+        run: pnpm install
+      - name: Lint
+        run: pnpm run lint
+      - name: Test TS
+        run: pnpm test
+      - name: Build Vite
+        run: pnpm run build
+      - name: Setup C++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+      - name: Configure C++
+        run: cmake -S src/cpp-oracle -B build
+      - name: Build C++
+        run: cmake --build build
+      - name: Test C++
+        run: ctest --test-dir build --output-on-failure
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python deps
+        run: pip install -r python/requirements.txt
+      - name: Test Python
+        run: pytest python/

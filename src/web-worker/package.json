@@ -1,0 +1,9 @@
+{
+  "name": "@cepc/web-worker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "echo \"No tests yet\"",
+    "lint": "echo \"No lint yet\""
+  }
+}

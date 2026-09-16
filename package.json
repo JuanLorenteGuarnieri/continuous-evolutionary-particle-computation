@@ -1,0 +1,13 @@
+{
+  "name": "cepc-monorepo",
+  "private": true,
+  "packageManager": "pnpm@8.0.0",
+  "scripts": {
+    "test": "pnpm --filter './src/*' test",
+    "lint": "pnpm --filter './src/*' lint",
+    "build": "pnpm --filter './src/react-ui' build"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
