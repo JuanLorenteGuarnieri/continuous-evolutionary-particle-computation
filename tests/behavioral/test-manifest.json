@@ -1,0 +1,64 @@
+{
+  "testFamilies": [
+    {
+      "id": "one-step-exact",
+      "mechanism": ["input quantization","charge reception","thresholding","processing","decay"],
+      "dataFile": "data/one-step-exact.json",
+      "tolerance": 0
+    },
+    {
+      "id": "multi-step-causal",
+      "mechanism": ["communication delay","charge accumulation"],
+      "dataFile": "data/multi-step-causal.json",
+      "tolerance": 1e-9
+    },
+    {
+      "id": "zero-neighbor",
+      "mechanism": ["communication with no neighbors"],
+      "dataFile": "data/zero-neighbor.json",
+      "tolerance": 0
+    },
+    {
+      "id": "saturation",
+      "mechanism": ["charge cap","health cap"],
+      "dataFile": "data/saturation.json",
+      "tolerance": 0
+    },
+    {
+      "id": "asymmetric-force",
+      "mechanism": ["asymmetric mechanical interactions"],
+      "dataFile": "data/asymmetric-force.json",
+      "tolerance": 1e-9
+    },
+    {
+      "id": "death-birth",
+      "mechanism": ["health-driven death","capacity-limited reproduction"],
+      "dataFile": "data/death-birth.json",
+      "tolerance": 0
+    },
+    {
+      "id": "capacity-full",
+      "mechanism": ["population cap enforcement"],
+      "dataFile": "data/capacity-full.json",
+      "tolerance": 0
+    },
+    {
+      "id": "mutation-boundary",
+      "mechanism": ["genetic mutation domain constraints"],
+      "dataFile": "data/mutation-boundary.json",
+      "tolerance": 0
+    },
+    {
+      "id": "protected-io",
+      "mechanism": ["fixed I/O particles"],
+      "dataFile": "data/protected-io.json",
+      "tolerance": 0
+    },
+    {
+      "id": "a-b-a-control",
+      "mechanism": ["feedback loop"],
+      "dataFile": "data/a-b-a-control.json",
+      "tolerance": 1e-9
+    }
+  ]
+}
