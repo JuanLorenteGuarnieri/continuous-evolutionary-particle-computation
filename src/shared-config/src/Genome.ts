@@ -75,7 +75,20 @@ export class Genome implements GenomeData {
   }
 
   public mutate(rng: RandomLike, rate = 0.1): Genome {
-    const mutated = { ...this };
+    const mutated = {
+      version: this.version,
+      H_max: this.H_max,
+      theta_q: this.theta_q,
+      A: this.A,
+      K: this.K,
+      R_c: this.R_c,
+      m: this.m,
+      gamma: this.gamma,
+      R_s: this.R_s,
+      omega_R: this.omega_R,
+      omega_A: this.omega_A,
+      omega_v: this.omega_v,
+    };
     const perturb = (v: number, scale = 0.1) => v * (1 + (rng.nextFloat() - 0.5) * scale);
     if (rng.nextFloat() < rate) mutated.H_max = Math.max(1, perturb(this.H_max));
     if (rng.nextFloat() < rate) mutated.theta_q = Math.max(1, Math.round(perturb(this.theta_q)));
