@@ -2,30 +2,27 @@
    "name": "cepc-monorepo",
    "private": true,
    "packageManager": "pnpm@8.15.9",
-  "scripts": {
-    "test": "pnpm --filter './src/*' test",
-    "lint": "pnpm --filter './src/*' lint",
-    "build": "pnpm --filter './src/react-ui' build",
-    "deploy": "pnpm --filter './src/react-ui' run build",
-    "test:webgpu-validation": "node -e \"console.log('WebGPU validation stub passed')\"",
-    "test:webgpu-mfm-validation": "node -e \"console.log('WebGPU MFM validation stub passed')\"",
-    "test:experiment-integration": "node -e \"console.log('Experiment integration stub passed')\"",
-    "test:cross-validate": "node tests/behavioral/run-tests.js",
-    "test:behavioral": "pnpm --filter @cepc/behavioral-tests test",
-    "validate:subset": "node tools/validate-trajectory.js configs/experiments/P0-manifest.json",
-    "validate:full": "node -e \"console.log('validate full stub passed')\"",
-    "benchmark": "node -e \"console.log('benchmark stub passed')\""
+ "scripts": {
+   "test": "pnpm --filter './src/*' test",
+   "lint": "pnpm --filter './src/*' lint",
+   "build": "pnpm --filter './src/react-ui' build",
+   "deploy": "pnpm --filter './src/react-ui' run build",
+   "test:webgpu-validation": "node -e \"console.log('WebGPU validation stub passed')\"",
+   "test:webgpu-mfm-validation": "node -e \"console.log('WebGPU MFM validation stub passed')\"",
+   "test:experiment-integration": "node -e \"console.log('Experiment integration stub passed')\"",
+   "test:cross-validate": "node tests/behavioral/run-tests.js",
+   "test:behavioral": "pnpm --filter @cepc/behavioral-tests test",
+   "validate:subset": "node tools/validate-trajectory.js configs/experiments/P0-manifest.json",
+   "validate:full": "node -e \"console.log('validate full stub passed')\"",
+   "benchmark": "node -e \"console.log('benchmark stub passed')\""
   },
-   "devDependencies": {
-     "typescript": "^5.9.3",
-     "eslint": "^8.57.1",
-     "prettier": "^3.0.0",
-     "@typescript-eslint/eslint-plugin": "^6.0.0",
-     "@typescript-eslint/parser": "^6.0.0",
-     "eslint-plugin-react": "^7.33.0",
-     "eslint-plugin-react-hooks": "^4.6.0",
-     "eslint-config-prettier": "^9.0.0"
-   }
- }
-,
-release:version
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "eslint": "^8.57.1",
+    "prettier": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint-plugin-react": "^7.33.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-config-prettier": "^9.0.0"
+  }
