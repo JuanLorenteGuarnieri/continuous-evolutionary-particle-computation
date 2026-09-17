@@ -1,0 +1,49 @@
+{
+  "config": {
+    "version": "3.0.0",
+    "Lx": 10,
+    "Ly": 10,
+    "Nmax": 10,
+    "dt": 0.1,
+    "seed": 6,
+    "Qmax": 1000,
+    "R_s_min": 0.5,
+    "R_s_max": 5.0
+  },
+  "population": {
+    "genomes": {
+      "p1": {
+        "version": "3.0.0",
+        "H_max": 100,
+        "theta_q": 5,
+        "A": 2,
+        "K": 1,
+        "R_c": 2,
+        "m": 1,
+        "gamma": 0.1,
+        "R_s": 1,
+        "omega_R": 0,
+        "omega_A": 0,
+        "omega_v": 0
+      }
+    },
+    "particles": {
+      "p1": {
+        "version": "3.0.0",
+        "position": {"x": 1, "y": 1},
+        "velocity": {"x": 0, "y": 0},
+        "health": 50,
+        "charge": 10,
+        "senderSet": [],
+        "prevSenderSet": []
+      }
+    }
+  },
+  "steps": 1,
+  "expected": {
+    "p1": {
+      "charge": 5,
+      "health": 50
+    }
+  }
+}

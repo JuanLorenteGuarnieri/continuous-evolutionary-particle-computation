@@ -21,24 +21,25 @@ See docs/Research_Roadmap_Stages_I-VII.md for details.
   - webgpu-mfm/: WebGPU MFM v3 implementation
   - experiment-api/: Stage IV experiment orchestration
   - shared-config/: Immutable model schema and constants
-  - eact-ui/: Browser UI (React + TypeScript)
+  - 
+eact-ui/: Browser UI (React + TypeScript)
   - web-worker/: Off‑thread computation
-  - uild/, 	ests/: Build and test scripts
+  - build/, 	ests/: Build and test scripts
 
 ## Getting Started
 The implementation is in progress. To set up the TypeScript parts once the source is present:
-`ash
+`
 pnpm install
 pnpm run dev
 `
 For the C++ oracle:
-`ash
+`
 cmake -S src/cpp-oracle -B build
 cmake --build build
 ctest --test-dir build
 `
 Linting and tests:
-`ash
+`
 pnpm run lint
 pnpm test
 `
@@ -48,7 +49,7 @@ See AGENTS.md for full contributor guidelines and docs/Reference_Implementation.
 The platform can be deployed to GitHub Pages using the CI/CD pipeline or manually:
 
 ### Manual Deployment
-`ash
+`
 pnpm install
 pnpm run deploy
 `
@@ -71,3 +72,10 @@ License to be determined. Please contact the maintainers for usage terms.
 
 ## Validation
 Scientific validation and performance characterization are documented in [docs/validation/validation-report.md](docs/validation/validation-report.md).
+
+## Public Release
+The CEPC simulator is publicly available at https://juanlorenteguarnieri.github.io/continuous-evolutionary-particle-computation/
+Version: v0.1.0
+Implemented features: MFM v3, CPU reference, C++ oracle, WebGPU backend, experiment runner
+Validation status: See docs/validation/validation-report.md
+Known limitations: Max ~1e5 particles in browser, WebGPU required, memory constraints

@@ -1,0 +1,29 @@
+ {
+   "version": "3.0.0",
+   "experimentId": "P1-health-death",
+   "description": "Health and death dynamics (P1)",
+   "mfmConfig": {
+     "version": "3.0.0",
+     "Lx": 100,
+     "Ly": 100,
+     "Nmax": 200,
+     "dt": 0.1,
+     "seed": 43,
+     "Qmax": 1000,
+     "R_s_min": 0.5,
+     "R_s_max": 5.0,
+     "boundary": "periodic"
+   },
+   "experimentConfig": {
+     "version": "3.0.0",
+     "duration": 1000,
+     "checkpointInterval": 100,
+     "errorMeasure": "mse",
+     "readout": {}
+   },
+   "inputSignal": {},
+   "outputReadout": {},
+   "duration": 1000,
+   "checkpointInterval": 100,
+   "metricsToCollect": ["populationCount", "avgHealth", "totalCharge", "deaths"]
+ }

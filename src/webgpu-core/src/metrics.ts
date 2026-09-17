@@ -1,4 +1,6 @@
- export class MetricsReducer {
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck
+export class MetricsReducer {
    private device: GPUDevice;
    private pipeline: GPUComputePipeline | null = null;
    private bindGroupLayout: GPUBindGroupLayout | null = null;

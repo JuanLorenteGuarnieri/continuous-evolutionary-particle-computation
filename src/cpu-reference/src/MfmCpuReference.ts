@@ -1,6 +1,6 @@
-import { MFMConfig, Genome, ParticleState, PopulationState, ParticleID } from '@cepc/shared-config';
+import { MFMConfig, ParticleState, PopulationState } from '@cepc/shared-config';
 import { XorShift32, PRNG } from './prng.js';
-import { periodicDistance, wrap, add, scale, len } from './vector2d.js';
+import { wrap, add, scale } from './vector2d.js';
 
 export class MfmCpuReference {
   private config: MFMConfig;
@@ -20,11 +20,10 @@ export class MfmCpuReference {
     // 3. Charge reception - already in state
     // 4-6 Threshold, processing, decay
     const newPop = new PopulationState();
-    for (const [id, state] of this.population.particles) {
-      const genome = this.population.genomes.get(id)!;
-      const qPre = state.charge;
-      const act = qPre >= genome.theta_q ? 1 : 0;
-      const qOut = act ? genome.A * genome.theta_q : 0;
+   for (const [id, state] of this.population.particles) {
+     const genome = this.population.genomes.get(id)!;
+     const qPre = state.charge;
+     const act = qPre >= genome.theta_q ? 1 : 0;
       const qRes = Math.max(0, qPre - genome.theta_q * act);
       const qPost = Math.max(0, Math.min(this.config.Qmax, qRes));
       const newState = new ParticleState({
@@ -41,8 +40,8 @@ export class MfmCpuReference {
     // 7. Communication neighborhood and target selection simplified
     // For phase 2 stub, keep population unchanged for mechanics
     // 13-14 Mechanics
-    for (const [id, state] of newPop.particles) {
-      const genome = newPop.genomes.get(id)!;
+   for (const [id, state] of newPop.particles) {
+      // const genome = newPop.genomes.get(id)!;
       // simple damping
       const v = {
         x: state.velocity.x * Math.exp(-this.config.dt * 0.1),

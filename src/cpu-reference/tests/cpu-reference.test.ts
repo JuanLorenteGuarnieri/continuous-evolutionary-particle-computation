@@ -35,6 +35,7 @@ describe('MfmCpuReference', () => {
     const sim2 = new MfmCpuReference(cfg, pop, 99);
     sim2.step();
     sim2.setState(saved);
+    sim2.step();
     const a = sim1.getState();
     const b = sim2.getState();
     expect(a.timestep).toBe(b.timestep);

@@ -17,7 +17,7 @@
        - name: Install pnpm
          uses: pnpm/action-setup@v3
          with:
-           version: 8
+           version: 8.15.9
        - name: Install dependencies
          run: pnpm install
        - name: Run validation subset

@@ -1,0 +1,37 @@
+ name: Deploy to GitHub Pages
+ on:
+   push:
+     branches: [ main ]
+   workflow_dispatch:
+ jobs:
+   deploy:
+     runs-on: ubuntu-latest
+     permissions:
+       contents: read
+       pages: write
+       id-token: write
+     steps:
+       - uses: actions/checkout@v4
+       - name: Setup Node
+         uses: actions/setup-node@v4
+         with:
+           node-version: 20
+       - name: Setup pnpm
+         uses: pnpm/action-setup@v3
+         with:
+           version: 8
+       - name: Install dependencies
+         run: pnpm install
+       - name: Run tests
+         run: pnpm run test
+       - name: Run lint
+         run: pnpm run lint
+       - name: Build UI
+         run: pnpm run build
+       - name: Upload artifact
+         uses: actions/upload-pages-artifact@v3
+         with:
+           path: src/react-ui/dist
+       - name: Deploy to GitHub Pages
+         id: deployment
+         uses: actions/deploy-pages@v4
