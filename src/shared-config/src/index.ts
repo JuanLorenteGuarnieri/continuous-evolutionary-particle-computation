@@ -6,4 +6,4 @@ export * from './MFMConfig.js';
 export * from './ExperimentConfig.js';
 export * from './SimulationSnapshot.js';
 export * from './ExperimentManifest.js';
-export * from './io.js';
+// export * from './io.js'; // io is node-only, not exported to browser

@@ -105,20 +105,24 @@ export class Genome implements GenomeData {
   }
 
   public crossover(other: Genome, rng: RandomLike): Genome {
-    const mix = (a: number, b: number) => rng.nextFloat() < 0.5 ? a : b;
+    const continuousMix = (a: number, b: number) => {
+      const alpha = rng.nextFloat();
+      return alpha * a + (1 - alpha) * b;
+    };
+    const discreteMix = (a: number, b: number) => rng.nextFloat() < 0.5 ? a : b;
     return new Genome({
       version: '3.0.0',
-      H_max: mix(this.H_max, other.H_max),
-      theta_q: mix(this.theta_q, other.theta_q),
-      A: mix(this.A, other.A),
-      K: mix(this.K, other.K),
-      R_c: mix(this.R_c, other.R_c),
-      m: mix(this.m, other.m),
-      gamma: mix(this.gamma, other.gamma),
-      R_s: mix(this.R_s, other.R_s),
-      omega_R: mix(this.omega_R, other.omega_R),
-      omega_A: mix(this.omega_A, other.omega_A),
-      omega_v: mix(this.omega_v, other.omega_v),
+      H_max: continuousMix(this.H_max, other.H_max),
+      theta_q: discreteMix(this.theta_q, other.theta_q),
+      A: continuousMix(this.A, other.A),
+      K: discreteMix(this.K, other.K),
+      R_c: continuousMix(this.R_c, other.R_c),
+      m: continuousMix(this.m, other.m),
+      gamma: continuousMix(this.gamma, other.gamma),
+      R_s: continuousMix(this.R_s, other.R_s),
+      omega_R: continuousMix(this.omega_R, other.omega_R),
+      omega_A: continuousMix(this.omega_A, other.omega_A),
+      omega_v: continuousMix(this.omega_v, other.omega_v),
     });
   }
 
@@ -126,8 +130,8 @@ export class Genome implements GenomeData {
     return { ...this };
   }
 
-  public static fromJSON(obj: GenomeData): Genome {
+  public static fromJSON(obj: unknown): Genome {
     if (!Genome.validate(obj)) throw new Error('Invalid Genome JSON');
-    return new Genome(obj);
+    return new Genome(obj as GenomeData);
   }
 }

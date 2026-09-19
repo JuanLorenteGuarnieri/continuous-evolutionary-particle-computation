@@ -46,21 +46,36 @@ export class SimulationSnapshot implements SimulationSnapshotData {
     };
   }
 
-  public static fromJSON(obj: Record<string, unknown>): SimulationSnapshot {
+  public static fromJSON(obj: unknown): SimulationSnapshot {
+    if (typeof obj !== 'object' || obj === null) throw new Error('Invalid SimulationSnapshot JSON');
+
+    const o = obj as Record<string, unknown>;
     const genomes = new Map<ParticleID, Genome>();
-    for (const [id, g] of obj.genomes ?? []) {
-      genomes.set(id, Genome.fromJSON(g));
+    const genomeEntries = Array.isArray(o.genomes) ? o.genomes : [];
+    for (const entry of genomeEntries) {
+      if (!Array.isArray(entry) || entry.length !== 2) continue;
+      const [id, g] = entry as [ParticleID, unknown];
+      if (Genome.validate(g)) {
+        genomes.set(id, Genome.fromJSON(g));
+      }
     }
+
     const states = new Map<ParticleID, ParticleState>();
-    for (const [id, p] of obj.particleStates ?? []) {
-      states.set(id, ParticleState.fromJSON(p));
+    const stateEntries = Array.isArray(o.particleStates) ? o.particleStates : [];
+    for (const entry of stateEntries) {
+      if (!Array.isArray(entry) || entry.length !== 2) continue;
+      const [id, p] = entry as [ParticleID, unknown];
+      if (ParticleState.validate(p)) {
+        states.set(id, ParticleState.fromJSON(p));
+      }
     }
+
     return new SimulationSnapshot({
-      version: obj.version,
-      timestep: obj.timestep,
+      version: typeof o.version === 'string' ? o.version : undefined,
+      timestep: typeof o.timestep === 'number' ? o.timestep : undefined,
       genomes,
       particleStates: states,
-      globalMetrics: obj.globalMetrics,
+      globalMetrics: typeof o.globalMetrics === 'object' && o.globalMetrics !== null ? o.globalMetrics as Record<string, unknown> : undefined,
     });
   }
 }

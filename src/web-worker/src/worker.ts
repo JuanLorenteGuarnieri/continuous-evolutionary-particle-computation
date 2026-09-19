@@ -1,269 +1,845 @@
- import { MfmCpuReference } from '@cepc/cpu-reference';
- import { WebGPUContext, createBuffer } from '@cepc/webgpu-core';
- import { RenderPipeline } from '@cepc/webgpu-core';
- import { MetricsReducer } from '@cepc/webgpu-core';
- import { ParticleState, PopulationState, Genome, MFMConfig, ParticleID } from '@cepc/shared-config';
+﻿/// <reference lib="webworker" />
+/// <reference lib="dom" />
+import { MfmCpuReference } from '@cepc/cpu-reference';
+import { WebGPUContext, createBuffer } from '@cepc/webgpu-core';
+import { RenderPipeline } from '@cepc/webgpu-core';
+import { MetricsReducer } from '@cepc/webgpu-core';
+import { ParticleState, PopulationState, Genome, MFMConfig, ParticleID } from '@cepc/shared-config';
+
+// WebGPU globals for TypeScript
+declare const GPUBufferUsage: {
+  readonly STORAGE: number;
+  readonly COPY_DST: number;
+  readonly VERTEX: number;
+  readonly UNIFORM: number;
+};
+type GPUCanvasContext = {
+  getCurrentTexture(): { createView(): GPUTextureView };
+};
+
+const workerScope = self as typeof self & {
+  postMessage(message: unknown, transfer?: Transferable[]): void;
+};
+
+// Worker state
+let offscreen: OffscreenCanvas | null = null;
+let isPaused = false;
+let stepsPerFrame = 1;
+let timestep = 0;
+let lastRenderTime = 0;
+let workerFps = 0;
+let inputSignal = 0;
+let backend: 'CPU' | 'WebGPU' = 'CPU';
+
+let simulation: MfmCpuReference | null = null;
+let population: PopulationState | null = null;
+let webgpuContext: WebGPUContext | null = null;
+let renderPipeline: RenderPipeline | null = null;
+let metricsReducer: MetricsReducer | null = null;
+
+let positionBuffer: GPUBuffer | null = null;
+let offsetBuffer: GPUBuffer | null = null;
+let healthBuffer: GPUBuffer | null = null;
+let chargeBuffer: GPUBuffer | null = null;
+let particleCount = 0;
  
- // Worker state
- let offscreen: OffscreenCanvas | null = null;
- let isPaused = false;
- let stepsPerFrame = 1;
- let timestep = 0;
+let device: GPUDevice | null = null;
+let webgpuReady = false;
+
+let currentConfig: MFMConfig | null = null;
+let initializationRandomState = 1;
+let camera = { x: 0, y: 0, zoom: 1 };
+let pointer = { x: 0.5, y: 0.5, inside: false };
+let grabbedIds: string[] = [];
+let grabAnchor: { x: number; y: number } | null = null;
+let grabRangePercent = 0.05;
+let inspectedTemplate: { role: 'internal' | 'input' | 'output'; genome: Record<string, unknown> } | null = null;
+
+function nextRandom(): number {
+  let value = initializationRandomState;
+  value ^= value << 13;
+  value ^= value >>> 17;
+  value ^= value << 5;
+  initializationRandomState = value >>> 0;
+  return initializationRandomState / 0xffffffff;
+}
+
+function randomBetween(min: number, max: number): number {
+  return min + (max - min) * nextRandom();
+}
+
+function wrapCoordinate(value: number, size: number): number {
+  return ((value % size) + size) % size;
+}
+
+function pointerToWorld(): { x: number; y: number } | null {
+  if (!currentConfig || !pointer.inside) return null;
+  const width = currentConfig.Lx / camera.zoom;
+  const height = currentConfig.Ly / camera.zoom;
+  return {
+    x: wrapCoordinate(camera.x - width / 2 + pointer.x * width, currentConfig.Lx),
+    y: wrapCoordinate(camera.y - height / 2 + pointer.y * height, currentConfig.Ly),
+  };
+}
+
+function resetCamera(): void {
+  if (!currentConfig) return;
+  camera = { x: currentConfig.Lx / 2, y: currentConfig.Ly / 2, zoom: 1 };
+}
+
+function moveCamera(dx: number, dy: number): void {
+  if (!currentConfig) return;
+  const width = currentConfig.Lx / camera.zoom;
+  const height = currentConfig.Ly / camera.zoom;
+  camera.x = wrapCoordinate(camera.x + dx * width, currentConfig.Lx);
+  camera.y = wrapCoordinate(camera.y + dy * height, currentConfig.Ly);
+}
+
+function changeZoom(delta: number): void {
+  if (!currentConfig) return;
+  const anchor = pointer.inside ? pointer : { x: 0.5, y: 0.5 };
+  const oldWidth = currentConfig.Lx / camera.zoom;
+  const oldHeight = currentConfig.Ly / camera.zoom;
+  const anchoredWorld = {
+    x: wrapCoordinate(camera.x - oldWidth / 2 + anchor.x * oldWidth, currentConfig.Lx),
+    y: wrapCoordinate(camera.y - oldHeight / 2 + anchor.y * oldHeight, currentConfig.Ly),
+  };
+  camera.zoom = Math.max(1, Math.min(10, camera.zoom + delta));
+  const newWidth = currentConfig.Lx / camera.zoom;
+  const newHeight = currentConfig.Ly / camera.zoom;
+  camera.x = wrapCoordinate(anchoredWorld.x - (anchor.x - 0.5) * newWidth, currentConfig.Lx);
+  camera.y = wrapCoordinate(anchoredWorld.y - (anchor.y - 0.5) * newHeight, currentConfig.Ly);
+}
+
+function updateRenderUniforms(): void {
+  if (!renderPipeline || !currentConfig) return;
+  renderPipeline.setUniforms(currentConfig.Hmax, currentConfig.Qmax, 0.01, 0.02, camera.x, camera.y, camera.zoom, currentConfig.Lx, currentConfig.Ly);
+}
+
+function varied(value: number, variation: number, minimum: number): number {
+  // Relative noise is symmetric around the base value and preserves its sign.
+  return Math.max(minimum, value * (1 + randomBetween(-variation, variation)));
+}
+
+function advanceSimulationStep(): void {
+  if (!simulation) return;
+  injectInputSignal();
+  simulation.step();
+  population = simulation.getPopulation();
+  timestep++;
+  syncRenderBuffers();
+}
+
+// Add method to inject input into simulation
+function injectInputSignal(): void {
+  if (simulation && typeof inputSignal === 'number') {
+    // MfmCpuReference does not expose an input-injection method. Keep this
+    // optional so workers using versions that support it remain compatible.
+    const injectInput = (simulation as unknown as {
+      injectInput?: (value: number) => void;
+    }).injectInput;
+    if (typeof injectInput === 'function') {
+      injectInput.call(simulation, inputSignal);
+    }
+  }
+}
+
+// Initialize everything
+async function initialize(config: MFMConfig) {
+  const configRecord = config as unknown as Record<string, unknown>;
+  if (typeof configRecord.inputSignal === 'number') {
+    inputSignal = Math.max(0, Math.min(1, configRecord.inputSignal));
+  }
+  initializationRandomState = (config.seed >>> 0) || 1;
+  if (configRecord && configRecord.backend === 'string') {
+    const maybe = configRecord.backend as 'CPU' | 'WebGPU';
+    if (maybe === 'CPU' || maybe === 'WebGPU') {
+      backend = maybe;
+    }
+  }
+  const maxParticlesValue =
+    typeof configRecord.maxParticles === 'number'
+      ? Number(configRecord.maxParticles)
+      : config.Nmax;
+
+  currentConfig = new MFMConfig({
+    ...config,
+    Nmax: maxParticlesValue,
+  });
+  resetCamera();
+
+  const initialPopulation = createInitialPopulation(currentConfig);
+  population = initialPopulation;
+  simulation = new MfmCpuReference(currentConfig, initialPopulation);
+  timestep = 0;
+
+  // Initialize WebGPU context only if backend is WebGPU
+  await setupRenderBackend();
+
+  // Render initial frame and send back OffscreenCanvas
+  await renderAndSendBack();
+}
  
- let simulation: MfmCpuReference | null = null;
- let webgpuContext: WebGPUContext | null = null;
- let renderPipeline: RenderPipeline | null = null;
- let metricsReducer: MetricsReducer | null = null;
+function createInitialPopulation(config: MFMConfig): PopulationState {
+  const population = new PopulationState();
+  const configRecord = config as unknown as Record<string, unknown>;
+  const variation = Math.max(0, Math.min(1, config.genome_variation));
+  const totalCount = Math.max(3, Math.floor(Number(
+    typeof configRecord.maxParticles === 'number' ? configRecord.maxParticles : config.Nmax
+  )));
+  const internalCount = Math.max(1, totalCount - 2);
+  const cols = Math.ceil(Math.sqrt(internalCount));
+  const rows = Math.ceil(internalCount / cols);
+  const spacing = Math.min(config.Lx, config.Ly) / 5;
+  const startX = (config.Lx - spacing * (cols - 1)) / 2;
+  const startY = (config.Ly - spacing * (rows - 1)) / 2;
+  const makeGenome = (vary: boolean) => new Genome({
+    H_max: vary ? varied(config.Hmax, variation, 1) : config.Hmax,
+    theta_q: vary ? Math.max(1, Math.round(varied(config.theta_q, variation, 1))) : config.theta_q,
+    A: vary ? varied(config.A, variation, 0.01) : config.A,
+    K: vary ? Math.max(1, Math.round(varied(config.K, variation, 1))) : config.K,
+    R_c: vary ? varied(config.Rc, variation, 0.01) : config.Rc,
+    m: vary ? varied(config.m, variation, 0.01) : config.m,
+    gamma: vary ? varied(config.gamma, variation, 0) : config.gamma,
+    R_s: vary ? varied(config.Rs, variation, 0.01) : config.Rs,
+    omega_R: vary ? varied(config.omega_R, variation, -Infinity) : config.omega_R,
+    omega_A: vary ? varied(config.omega_A, variation, -Infinity) : config.omega_A,
+    omega_v: vary ? varied(config.omega_v, variation, -Infinity) : config.omega_v,
+  });
+  const add = (id: string, role: 'internal' | 'input' | 'output', x: number, y: number) => {
+    const genome = makeGenome(role === 'internal');
+    const speed = role === 'internal' ? randomBetween(0.05, 0.2) : 0;
+    const angle = randomBetween(0, Math.PI * 2);
+    population.addParticle(id as ParticleID, genome, new ParticleState({
+      version: '3.0.0',
+      position: role === 'internal' ? { x: randomBetween(0, config.Lx), y: randomBetween(0, config.Ly) } : { x, y },
+      velocity: { x: speed * Math.cos(angle), y: speed * Math.sin(angle) },
+      health: genome.H_max, charge: 0, senderSet: new Set(), prevSenderSet: new Set(), role,
+    }));
+  };
+  add('input-0', 'input', config.Lx * 0.25, config.Ly * 0.25);
+  add('output-0', 'output', config.Lx * 0.75, config.Ly * 0.75);
+  let index = 0;
+  for (let y = 0; y < rows && index < internalCount; y++) {
+    for (let x = 0; x < cols && index < internalCount; x++) {
+      add(`particle-${index}`, 'internal', startX + x * spacing, startY + y * spacing);
+      index++;
+    }
+  }
+  return population;
+}
+
+function createInteractiveParticle(position: { x: number; y: number }): void {
+  if (!currentConfig || !population || !simulation || population.particles.size >= currentConfig.Nmax) return;
+  const genome = new Genome(inspectedTemplate?.genome ?? {
+    H_max: currentConfig.Hmax,
+    theta_q: currentConfig.theta_q,
+    A: currentConfig.A,
+    K: currentConfig.K,
+    R_c: currentConfig.Rc,
+    m: currentConfig.m,
+    gamma: currentConfig.gamma,
+    R_s: currentConfig.Rs,
+    omega_R: currentConfig.omega_R,
+    omega_A: currentConfig.omega_A,
+    omega_v: currentConfig.omega_v,
+  });
+  const id = `interactive-${timestep}-${population.particles.size}`;
+  population.addParticle(id, genome, new ParticleState({
+    position,
+    velocity: { x: 0, y: 0 },
+    health: genome.H_max,
+    charge: 0,
+    senderSet: new Set(),
+    prevSenderSet: new Set(),
+    role: inspectedTemplate?.role ?? 'internal',
+  }));
+  simulation.setPopulation(population);
+  syncRenderBuffers();
+}
+
+function inspectNearestParticle(): void {
+  const world = pointerToWorld();
+  if (!world || !population || !currentConfig) return;
+  let nearest: { id: string; state: ParticleState; genome: Genome } | null = null;
+  let nearestDistance = Infinity;
+  for (const [id, state] of population.particles) {
+    const genome = population.genomes.get(id);
+    if (!genome) continue;
+    const dx = Math.min(Math.abs(state.position.x - world.x), currentConfig.Lx - Math.abs(state.position.x - world.x));
+    const dy = Math.min(Math.abs(state.position.y - world.y), currentConfig.Ly - Math.abs(state.position.y - world.y));
+    const distance = Math.hypot(dx, dy);
+    if (distance < nearestDistance) {
+      nearest = { id, state, genome };
+      nearestDistance = distance;
+    }
+  }
+  if (!nearest) return;
+  inspectedTemplate = { role: nearest.state.role, genome: nearest.genome.toJSON() as Record<string, unknown> };
+  workerScope.postMessage({
+    type: 'particleInspection',
+    payload: {
+      id: nearest.id,
+      role: nearest.state.role,
+      position: { ...nearest.state.position },
+      velocity: { ...nearest.state.velocity },
+      health: nearest.state.health,
+      charge: nearest.state.charge,
+      senderSet: Array.from(nearest.state.senderSet),
+      prevSenderSet: Array.from(nearest.state.prevSenderSet),
+      genome: nearest.genome.toJSON(),
+    },
+  });
+}
+
+function beginGrab(): void {
+  const world = pointerToWorld();
+  if (!world || !population || !currentConfig) return;
+  const radius = Math.min(currentConfig.Lx, currentConfig.Ly) * grabRangePercent;
+  grabbedIds = [];
+  grabAnchor = world;
+  for (const [id, state] of population.particles) {
+    const dx = state.position.x - world.x;
+    const dy = state.position.y - world.y;
+    const wrappedDx = Math.min(Math.abs(dx), currentConfig.Lx - Math.abs(dx));
+    const wrappedDy = Math.min(Math.abs(dy), currentConfig.Ly - Math.abs(dy));
+    if (Math.hypot(wrappedDx, wrappedDy) <= radius) grabbedIds.push(id);
+  }
+}
+
+function updateGrab(): void {
+  const world = pointerToWorld();
+  if (!world || !grabAnchor || !population || !simulation || !currentConfig) return;
+  const dx = world.x - grabAnchor.x;
+  const dy = world.y - grabAnchor.y;
+  for (const id of grabbedIds) {
+    const state = population.particles.get(id);
+    if (!state || state.role !== 'internal') continue;
+    state.position = {
+      x: wrapCoordinate(state.position.x + dx, currentConfig.Lx),
+      y: wrapCoordinate(state.position.y + dy, currentConfig.Ly),
+    };
+    state.velocity = { x: 0, y: 0 };
+  }
+  grabAnchor = world;
+  simulation.setPopulation(population);
+  syncRenderBuffers();
+}
+
+function endGrab(): void {
+  grabbedIds = [];
+  grabAnchor = null;
+}
  
- let positionBuffer: GPUBuffer | null = null;
- let offsetBuffer: GPUBuffer | null = null;
- let healthBuffer: GPUBuffer | null = null;
- let chargeBuffer: GPUBuffer | null = null;
- let particleCount = 0;
+function initializeBuffers() {
+  if (!currentConfig) return;
+  if (!population) return;
+  const pop = population;
+  particleCount = pop.particles.size;
  
- let device: GPUDevice | null = null;
+  // Create and fill buffers
+  const positions = new Float32Array(particleCount * 2);
+  const healths = new Float32Array(particleCount);
+  const charges = new Float32Array(particleCount);
+  const roles = new Float32Array(particleCount);
+
+  let i = 0;
+  for (const [, state] of pop.particles) {
+    positions[i * 2] = state.position.x;
+    positions[i * 2 + 1] = state.position.y;
+    healths[i] = state.health;
+    charges[i] = state.charge;
+    roles[i] = state.role === 'input' ? 1 : state.role === 'output' ? 2 : 0;
+    i++;
+  }
+
+  if (device) {
+    positionBuffer = createBuffer(device, positions.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX);
+    healthBuffer = createBuffer(device, healths.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX);
+    chargeBuffer = createBuffer(device, charges.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX);
+
+    device.queue.writeBuffer(positionBuffer, 0, positions);
+    device.queue.writeBuffer(healthBuffer, 0, healths);
+    device.queue.writeBuffer(chargeBuffer, 0, charges);
+
+    // Set buffers in metrics reducer
+    if (metricsReducer) metricsReducer.setBuffers(healthBuffer, chargeBuffer, particleCount);
+
+      // Create offset buffer for a quad (6 vertices per particle)
+      offsetBuffer = createOffsetBuffer(particleCount);
+
+      // Set initial uniforms (we'll update these later if needed)
+      if (renderPipeline && currentConfig) {
+        updateRenderUniforms();
+        // Feed initial particle data to render pipeline
+        // Build interleaved position+offset vertex data
+        const positionsForRender = new Float32Array(particleCount * 12); // 6 verts * 2 comps
+        const offsetsForRender = new Float32Array(particleCount * 12);
+        // Offsets are per-vertex unit quad
+        const quad = new Float32Array([-0.5,-0.5, 0.5,-0.5, 0.5,0.5, -0.5,-0.5, 0.5,0.5, -0.5,0.5]);
+        for (let i = 0; i < particleCount; i++) {
+          for (let v = 0; v < 6; v++) {
+            positionsForRender[i*12 + v*2] = positions[i*2];
+            positionsForRender[i*12 + v*2 + 1] = positions[i*2 + 1];
+            offsetsForRender[i*12 + v*2] = quad[v*2];
+            offsetsForRender[i*12 + v*2 + 1] = quad[v*2 + 1];
+          }
+        }
+      renderPipeline.setParticleData(
+        positionsForRender,
+        offsetsForRender,
+        healths,
+        charges,
+        roles
+      );
+    }
+  }
+}
  
- // Initialize everything
- async function initialize(config: MFMConfig) {
-   // Create simulation
-   const initialPopulation = createInitialPopulation(config);
-   simulation = new MfmCpuReference(config, initialPopulation);
+function createOffsetBuffer(count: number): GPUBuffer {
+  // Each particle gets 6 vertices for a quad (two triangles)
+  // We'll define the offsets for a unit square centered at origin
+  const offsets = new Float32Array([
+    -0.5, -0.5, // v0
+    0.5, -0.5, // v1
+    0.5,  0.5, // v2
+    -0.5, -0.5, // v0 (again)
+    0.5,  0.5, // v2 (again)
+    -0.5,  0.5  // v3
+  ].flat());
+  // Repeat for each particle
+  const repeated = new Float32Array(count * offsets.length);
+  for (let i = 0; i < count; i++) {
+    repeated.set(offsets, i * offsets.length);
+  }
+  return createBuffer(device!, repeated.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
+}
+
+function getInterfaceCharge(role: 'input' | 'output'): number {
+  if (!population) return 0;
+  let charge = 0;
+  for (const [, state] of population.particles) {
+    if (state.role === role) charge += state.charge;
+  }
+  return charge;
+}
+
+function worldToCanvas(x: number, y: number): { x: number; y: number } | null {
+  if (!currentConfig || !offscreen) return null;
+  const width = currentConfig.Lx / camera.zoom;
+  const height = currentConfig.Ly / camera.zoom;
+  const dx = ((x - (camera.x - width / 2) + currentConfig.Lx) % currentConfig.Lx) / width;
+  const dy = ((y - (camera.y - height / 2) + currentConfig.Ly) % currentConfig.Ly) / height;
+  return { x: dx * offscreen.width, y: dy * offscreen.height };
+}
  
-   // Initialize WebGPU context
-   webgpuContext = new WebGPUContext();
-   const gpu = await webgpuContext.init(offscreen!);
-   const { device: dev, format } = gpu;
-   device = dev;
+async function renderAndSendBack() {
+  if (!offscreen) return;
+
+  // Advance simulation if playing
+  if (!isPaused && simulation && population) {
+    for (let i = 0; i < stepsPerFrame; i++) {
+      advanceSimulationStep();
+    }
+  }
+
+  if (webgpuReady) {
+    // Existing WebGPU rendering path
+    if (!device || !renderPipeline) return;
+    const context = offscreen.getContext('webgpu') as unknown as GPUCanvasContext;
+    if (!context) return;
+
+    const now = performance.now();
+    if (lastRenderTime > 0) {
+      const delta = now - lastRenderTime;
+      workerFps = 1000 / delta;
+    }
+    lastRenderTime = now;
+
+    const textureView = context.getCurrentTexture().createView() as GPUTextureView;
+    const commandEncoder = device.createCommandEncoder();
+
+    // Always update render pipeline with current particle data
+    if (population && renderPipeline) {
+      const pop = population;
+      const positions = new Float32Array(particleCount * 2);
+      const healths = new Float32Array(particleCount);
+      const charges = new Float32Array(particleCount);
+      const roles = new Float32Array(particleCount);
+      let i = 0;
+      for (const [, state] of pop.particles) {
+        positions[i * 2] = state.position.x;
+        positions[i * 2 + 1] = state.position.y;
+        healths[i] = state.health;
+        charges[i] = state.charge;
+        roles[i] = state.role === 'input' ? 1 : state.role === 'output' ? 2 : 0;
+        i++;
+      }
+      const positionsForRender = new Float32Array(particleCount * 12);
+      const offsetsForRender = new Float32Array(particleCount * 12);
+      const quad = new Float32Array([-0.5,-0.5, 0.5,-0.5, 0.5,0.5, -0.5,-0.5, 0.5,0.5, -0.5,0.5]);
+      for (let p = 0; p < particleCount; p++) {
+        for (let v = 0; v < 6; v++) {
+          positionsForRender[p*12 + v*2] = positions[p*2];
+          positionsForRender[p*12 + v*2 + 1] = positions[p*2 + 1];
+          offsetsForRender[p*12 + v*2] = quad[v*2];
+          offsetsForRender[p*12 + v*2 + 1] = quad[v*2 + 1];
+        }
+      }
+      renderPipeline.setParticleData(positionsForRender, offsetsForRender, healths, charges, roles);
+    }
+
+    // Use RenderPipeline to draw particles
+    renderPipeline.render(commandEncoder, textureView, particleCount);
+
+    const gpuAsync = device.queue.submit([commandEncoder.finish()]);
+    await gpuAsync;
+
+    // Send frame snapshot with payload expected by main.tsx
+    const bitmap = offscreen.transferToImageBitmap();
+    workerScope.postMessage({ type: 'frame', payload: { offscreen: bitmap } }, [bitmap]);
+
+    // Send metrics
+    if (metricsReducer) {
+      try {
+        const metrics = await metricsReducer.computeMetrics();
+        self.postMessage({ type: 'metrics', payload: { metrics: { ...metrics, inputCharge: getInterfaceCharge('input'), outputCharge: getInterfaceCharge('output') }, timestep, workerFps } });
+      } catch (e) {
+        // ignore metrics errors
+      }
+    }
+  } else {
+    // CPU fallback rendering using 2D canvas
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) return;
+
+    // Clear background (black)
+    ctx.clearRect(0, 0, offscreen.width, offscreen.height);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+    // Draw particles as simple circles
+    if (population) {
+      for (const [id, state] of population.particles) {
+        const canvasPosition = worldToCanvas(state.position.x, state.position.y);
+        if (!canvasPosition) continue;
+        const { x, y } = canvasPosition;
+        const healthRatio = Math.max(0, Math.min(1, state.health / (population.genomes.get(id)?.H_max ?? 100)));
+        const radius = state.role === 'internal' ? 2 : 6;
+        if (state.role === 'input') {
+          ctx.fillStyle = '#00e5ff';
+        } else if (state.role === 'output') {
+          ctx.fillStyle = '#9b5cff';
+        } else {
+          const red = Math.round(255 * (1 - healthRatio));
+          const green = Math.round(255 * healthRatio);
+          ctx.fillStyle = `rgb(${red}, ${green}, 0)`;
+        }
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Compute FPS (optional)
+    const now = performance.now();
+    if (lastRenderTime > 0) {
+      workerFps = 1000 / (now - lastRenderTime);
+    }
+    lastRenderTime = now;
+
+    // Send frame bitmap
+    const bitmap = offscreen.transferToImageBitmap();
+    workerScope.postMessage({ type: 'frame', payload: { offscreen: bitmap } }, [bitmap]);
+
+    // Send simple metrics (count, health sum, charge sum, avg, min, max)
+    if (population) {
+      let count = 0;
+      let healthSum = 0;
+      let chargeSum = 0;
+      let minHealth = Infinity;
+      let maxHealth = -Infinity;
+      let minCharge = Infinity;
+      let maxCharge = -Infinity;
+      for (const [, state] of population.particles) {
+        count++;
+        healthSum += state.health;
+        chargeSum += state.charge;
+        if (state.health < minHealth) minHealth = state.health;
+        if (state.health > maxHealth) maxHealth = state.health;
+        if (state.charge < minCharge) minCharge = state.charge;
+        if (state.charge > maxCharge) maxCharge = state.charge;
+      }
+      const metrics = {
+        count,
+        healthSum,
+        chargeSum,
+        avgHealth: count ? healthSum / count : 0,
+        avgCharge: count ? chargeSum / count : 0,
+        minHealth: isFinite(minHealth) ? minHealth : 0,
+        maxHealth: isFinite(maxHealth) ? maxHealth : 0,
+        minCharge: isFinite(minCharge) ? minCharge : 0,
+        maxCharge: isFinite(maxCharge) ? maxCharge : 0,
+        inputCharge: getInterfaceCharge('input'),
+        outputCharge: getInterfaceCharge('output')
+      };
+      self.postMessage({ type: 'metrics', payload: { metrics, timestep, workerFps } });
+    }
+  }
+}
+
+// Message handling from main thread
+self.onmessage = async (event: MessageEvent) => {
+  const data = event.data ?? {};
+  const { type } = data;
+  const payload = data.payload ?? data;
+
+  if (type === 'init') {
+    if (!payload?.offscreen || !payload?.config) return;
+    offscreen = payload.offscreen;
+    await initialize(payload.config);
+    return;
+  }
+
+  if (!offscreen) return; // Not initialized yet
+
+  switch (type) {
+    case 'frame':
+      await renderAndSendBack();
+      break;
+    case 'pause':
+      isPaused = true;
+      break;
+    case 'play':
+      isPaused = false;
+      break;
+    case 'step':
+      if (isPaused) {
+        advanceSimulationStep();
+        await renderAndSendBack();
+      }
+      break;
+  case 'reset':
+    isPaused = false;
+    timestep = 0;
+      if (currentConfig) {
+      population = createInitialPopulation(currentConfig); 
+      simulation = new MfmCpuReference(currentConfig, population); 
+        timestep = 0;
+        syncRenderBuffers();
+      await renderAndSendBack(); 
+    }
+      break;
+    case 'setSpeed':
+      stepsPerFrame = payload.stepsPerFrame; 
+      break;
+    case 'updateConfig':
+    case 'reinit':
+      if (currentConfig && payload) {
+        const merged: Record<string, unknown> = { ...currentConfig as unknown as Record<string, unknown>, ...payload };
+        if (typeof merged.maxParticles === 'number') {
+          merged.Nmax = Number(merged.maxParticles);
+        }
+        currentConfig = new MFMConfig({
+          ...(currentConfig as unknown as Record<string, unknown>),
+          ...(merged as Record<string, unknown>),
+          Nmax: Number(merged.Nmax ?? currentConfig.Nmax),
+        });
+        resetCamera();
+        simulation?.setConfig(currentConfig);
+
+        if (renderPipeline) {
+          updateRenderUniforms();
+        }
+        if (type === 'reinit') {
+          isPaused = false;
+          timestep = 0;
+          population = createInitialPopulation(currentConfig);
+          simulation = new MfmCpuReference(currentConfig, population);
+          syncRenderBuffers();
+          await renderAndSendBack();
+        }
+      }
+      break; 
+    case 'setInput': 
+    if (payload && typeof payload.u === 'number') { 
+      inputSignal = payload.u; 
+    } 
+    break;
+    case 'pointer':
+      if (payload && typeof payload.x === 'number' && typeof payload.y === 'number') {
+        pointer = { x: payload.x, y: payload.y, inside: payload.inside !== false };
+        updateGrab();
+      }
+      break;
+    case 'cameraPan':
+      moveCamera(Number(payload?.dx ?? 0), Number(payload?.dy ?? 0));
+      updateRenderUniforms();
+      break;
+    case 'cameraZoom':
+      changeZoom(Number(payload?.delta ?? 0));
+      updateRenderUniforms();
+      break;
+    case 'cameraReset':
+      resetCamera();
+      updateRenderUniforms();
+      break;
+    case 'createParticle': {
+      const world = pointerToWorld();
+      if (world) createInteractiveParticle(world);
+      break;
+    }
+    case 'inspectParticle':
+      inspectNearestParticle();
+      break;
+    case 'grabStart':
+      grabRangePercent = Math.max(0.005, Math.min(0.5, Number(payload?.rangePercent ?? grabRangePercent)));
+      beginGrab();
+      break;
+    case 'grabEnd':
+      endGrab();
+      break;
+    case 'grabRange':
+      grabRangePercent = Math.max(0.005, Math.min(0.5, grabRangePercent + Number(payload?.delta ?? 0)));
+      break;
+    case 'setBackend':
+    if (payload && payload.backend) {
+      backend = payload.backend;
+      // Reconfigure rendering backend without losing simulation state
+      if (offscreen && currentConfig) {
+        await setupRenderBackend();
+      }
+      self.postMessage({ type: 'backend', payload: { backend } });
+    }
+    break;
+  } 
+}; 
  
-   // Initialize render pipeline
-   renderPipeline = new RenderPipeline(device);
-   await renderPipeline.init(format);
+function syncRenderBuffers() {
+  if (!population) return;
+  if (device && population.particles.size !== particleCount) {
+    if (positionBuffer) positionBuffer.destroy();
+    if (healthBuffer) healthBuffer.destroy();
+    if (chargeBuffer) chargeBuffer.destroy();
+    if (offsetBuffer) offsetBuffer.destroy();
+    positionBuffer = null;
+    healthBuffer = null;
+    chargeBuffer = null;
+    offsetBuffer = null;
+    initializeBuffers();
+    return;
+  }
+  updateParticleBuffers();
+}
+
+function updateParticleBuffers() {
+  if (!positionBuffer || !healthBuffer || !chargeBuffer) return;
+  if (!population) return; 
+  const pop = population; 
+  const positions = new Float32Array(particleCount * 2); 
+  const healths = new Float32Array(particleCount); 
+  const charges = new Float32Array(particleCount); 
  
-   // Initialize metrics reducer
-   metricsReducer = new MetricsReducer(device);
-   await metricsReducer.init();
+  let i = 0; 
+  for (const [, state] of pop.particles) { 
+    positions[i * 2] = state.position.x; 
+    positions[i * 2 + 1] = state.position.y; 
+    healths[i] = state.health; 
+    charges[i] = state.charge; 
+    i++; 
+  } 
  
-   // Initialize buffers
-   initializeBuffers();
+  if (positionBuffer) device!.queue.writeBuffer(positionBuffer, 0, positions); 
+  if (healthBuffer) device!.queue.writeBuffer(healthBuffer, 0, healths); 
+  if (chargeBuffer) device!.queue.writeBuffer(chargeBuffer, 0, charges); 
  
-   // Render initial frame and send back OffscreenCanvas
-   await renderAndSendBack();
- }
- 
- function createInitialPopulation(config: MFMConfig): PopulationState {
-   const population = new PopulationState();
- 
-   // Create a few particles in a grid
-   const count = 16; // 4x4 grid
-   const spacing = Math.min(config.Lx, config.Ly) / 5;
-   const startX = (config.Lx - spacing * (Math.sqrt(count) - 1)) / 2;
-   const startY = (config.Ly - spacing * (Math.sqrt(count) - 1)) / 2;
- 
-   let idx = 0;
-   for (let y = 0; y < Math.sqrt(count); y++) {
-     for (let x = 0; x < Math.sqrt(count); x++) {
-       const id = `particle-${idx}` as ParticleID;
-       const genome = new Genome({
-         Hmax: config.Hmax ?? 100,
-         theta_q: config.theta_q ?? 10,
-         A: config.A ?? 2,
-         K: config.K ?? 4,
-         Rc: config.Rc ?? 1.0,
-         m: config.m ?? 1.0,
-         gamma: config.gamma ?? 0.1,
-         Rs: config.Rs ?? 1.0,
-         omega_R: config.omega_R ?? 0.5,
-         omega_A: config.omega_A ?? 0.5,
-         omega_v: config.omega_v ?? 0.5
-       });
-       const state = new ParticleState({
-         version: '3.0.0',
-         position: { x: startX + x * spacing, y: startY + y * spacing },
-         velocity: { x: 0, y: 0 },
-         health: config.Hmax ?? 100,
-         charge: 0,
-         senderSet: new Set(),
-         prevSenderSet: new Set()
-       });
- 
-       population.addParticle(id, genome.clone(), state);
-       idx++;
-     }
-   }
- 
-   return population;
- }
- 
- function initializeBuffers() {
-   if (!simulation) return;
-   const pop = simulation.getState().population as PopulationState;
-   particleCount = pop.particles.size;
- 
-   // Create and fill buffers
-   const positions = new Float32Array(particleCount * 2);
-   const healths = new Float32Array(particleCount);
-   const charges = new Float32Array(particleCount);
- 
-   let i = 0;
-   for (const [id, state] of pop.particles) {
-     positions[i * 2] = state.position.x;
-     positions[i * 2 + 1] = state.position.y;
-     healths[i] = state.health;
-     charges[i] = state.charge;
-     i++;
-   }
- 
-   if (device) {
-     positionBuffer = createBuffer(device, positions.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX);
-     healthBuffer = createBuffer(device, healths.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX);
-     chargeBuffer = createBuffer(device, charges.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX);
- 
-     device.queue.writeBuffer(positionBuffer, 0, positions);
-     device.queue.writeBuffer(healthBuffer, 0, healths);
-     device.queue.writeBuffer(chargeBuffer, 0, charges);
- 
-     // Set buffers in metrics reducer
-     if (metricsReducer) metricsReducer.setBuffers(healthBuffer, chargeBuffer, particleCount);
- 
-     // Create offset buffer for a quad (6 vertices per particle)
-     offsetBuffer = createOffsetBuffer(particleCount);
- 
-     // Set initial uniforms (we'll update these later if needed)
-     if (renderPipeline) {
-       renderPipeline.setUniforms(
-         config.Hmax ?? 100,
-         config.Qmax ?? 100,
-         0.01, // baseSize
-         0.02  // sizeScale
-       );
-     }
-   }
- }
- 
- function createOffsetBuffer(count: number): GPUBuffer {
-   // Each particle gets 6 vertices for a quad (two triangles)
-   // We'll define the offsets for a unit square centered at origin
-   const offsets = new Float32Array([
-     -0.5, -0.5, // v0
-      0.5, -0.5, // v1
-      0.5,  0.5, // v2
-     -0.5, -0.5, // v0 (again)
-      0.5,  0.5, // v2 (again)
-     -0.5,  0.5  // v3
-   ].flat());
-   // Repeat for each particle
-   const repeated = new Float32Array(count * offsets.length);
-   for (let i = 0; i < count; i++) {
-     repeated.set(offsets, i * offsets.length);
-   }
-   return createBuffer(device!, repeated.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
- }
- 
- async function renderAndSendBack() {
-   if (!offscreen || !device || !renderPipeline) return;
- 
-   const context = offscreen.getContext('webgpu');
-   if (!context) return;
- 
-   const textureView = context.getCurrentTexture().createView();
-   const commandEncoder = device.createCommandEncoder();
- 
-   // Clear screen with a color that changes with timestep for debugging
-   const r = 0.1 + (timestep % 100) / 1000 * 0.8;
-   const g = 0.1;
-   const b = 0.1;
- 
-   const pass = commandEncoder.beginRenderPass({
-     colorAttachments: [{
-       view: textureView,
-       loadOp: 'clear',
-       storeOp: 'store',
-       clearValue: { r, g, b, a: 1.0 }
-     }]
-   });
- 
-   pass.end();
- 
-   const gpuAsync = device.queue.submit([commandEncoder.finish()]);
- 
-   // Wait for GPU to finish before transferring back
-   await gpuAsync;
- 
-   // Send OffscreenCanvas back to main thread
-   self.postMessage({ type: 'frame', offscreen }, [offscreen]);
-   offscreen = null; // We've transferred it away
- }
- 
- // Message handling from main thread
- self.onmessage = async (event: MessageEvent) => {
-   const { type, payload } = event.data;
- 
-   if (type === 'init') {
-     offscreen = payload.offscreen;
-     await initialize(payload.config);
-     return;
-   }
- 
-   if (!offscreen) return; // Not initialized yet
- 
-   switch (type) {
-     case 'frame':
-       // Main thread is sending the OffscreenCanvas back for us to render the next frame
-       // We'll render and send it back
-       await renderAndSendBack();
-       break;
-     case 'pause':
-       isPaused = true;
-       break;
-     case 'play':
-       isPaused = false;
-       break;
-     case 'step':
-       if (isPaused) {
-         simulation?.step();
-         timestep++;
-         updateParticleBuffers();
-         // Render and send back immediately for the step
-         await renderAndSendBack();
-       }
-       break;
-     case 'reset':
-       isPaused = false;
-       timestep = 0;
-       if (simulation) {
-         simulation.population = createInitialPopulation(simulation.config);
-         updateParticleBuffers();
-         await renderAndSendBack();
-       }
-       break;
-     case 'setSpeed':
-       stepsPerFrame = payload.stepsPerFrame;
-       break;
-   }
- };
- 
- function updateParticleBuffers() {
-   if (!simulation) return;
-   const pop = simulation.getState().population as PopulationState;
-   const positions = new Float32Array(particleCount * 2);
-   const healths = new Float32Array(particleCount);
-   const charges = new Float32Array(particleCount);
- 
-   let i = 0;
-   for (const [id, state] of pop.particles) {
-     positions[i * 2] = state.position.x;
-     positions[i * 2 + 1] = state.position.y;
-     healths[i] = state.health;
-     charges[i] = state.charge;
-     i++;
-   }
- 
-   if (positionBuffer) device.queue.writeBuffer(positionBuffer, 0, positions);
-   if (healthBuffer) device.queue.writeBuffer(healthBuffer, 0, healths);
-   if (chargeBuffer) device.queue.writeBuffer(chargeBuffer, 0, charges);
- 
-   // Update metrics reducer buffers (same buffers)
-   if (metricsReducer) metricsReducer.setBuffers(healthBuffer, chargeBuffer, particleCount);
- }
+  // Update metrics reducer buffers (same buffers) 
+  if (metricsReducer) metricsReducer.setBuffers(healthBuffer!, chargeBuffer!, particleCount); 
+} 
+
+function disposeWebGPUResources() {
+  if (positionBuffer) {
+    positionBuffer.destroy();
+    positionBuffer = null;
+  }
+  if (healthBuffer) {
+    healthBuffer.destroy();
+    healthBuffer = null;
+  }
+  if (chargeBuffer) {
+    chargeBuffer.destroy();
+    chargeBuffer = null;
+  }
+  if (offsetBuffer) {
+    offsetBuffer.destroy();
+    offsetBuffer = null;
+  }
+  if (renderPipeline) {
+    renderPipeline.destroy();
+    renderPipeline = null;
+  }
+  if (metricsReducer) {
+    metricsReducer.destroy();
+    metricsReducer = null;
+  }
+  if (webgpuContext) {
+    webgpuContext.destroy();
+    webgpuContext = null;
+  }
+  device = null;
+}
+
+async function setupRenderBackend() {
+  // Dispose existing WebGPU resources
+  disposeWebGPUResources();
+
+  if (!offscreen || !currentConfig || !population) {
+    // Not initialized yet
+    return;
+  }
+
+  if (backend === 'WebGPU') {
+    try {
+      webgpuContext = new WebGPUContext();
+      const gpu = await webgpuContext.init(offscreen);
+      const { device: dev, format } = gpu;
+      device = dev;
+
+      // Initialize render pipeline
+      renderPipeline = new RenderPipeline(device);
+      await renderPipeline.init(format);
+
+      // Initialize metrics reducer
+      metricsReducer = new MetricsReducer(device);
+      await metricsReducer.init();
+
+      // Initialize buffers (requires current particle data)
+      initializeBuffers();
+      webgpuReady = true;
+    } catch (e) {
+      console.warn("WebGPU initialization failed falling back to CPU rendering:", e);
+      disposeWebGPUResources();
+      // Ensure 2D context for CPU fallback
+      const ctx2d = offscreen.getContext('2d');
+      if (!ctx2d) {
+        console.error("OffscreenCanvas does not support 2D context either");
+      }
+      webgpuReady = false;
+    }
+  } else {
+    // CPU backend: skip WebGPU setup
+    webgpuReady = false;
+    // Ensure 2D context for drawing
+    const ctx2d = offscreen.getContext('2d');
+    if (!ctx2d) {
+      console.error("OffscreenCanvas does not support 2D context");
+    }
+  }
+}
+// ## Assumptions
+// - The `offscreen` canvas and `currentConfig` remain valid after initialization.
+// - The simulation (`MfmCpuReference`) is backend-agnostic and always runs on CPU (as per current design).
+// - WebGPU is used only for rendering and metrics computation, not for simulation steps.
+// - Particle count does not change during backend switch (only config changes via `updateConfig`/`reinit` affect it).
  
  // End of worker

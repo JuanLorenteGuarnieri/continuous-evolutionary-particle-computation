@@ -26,6 +26,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^4.6.0
         version: 4.6.2(eslint@8.57.1)
+      playwright:
+        specifier: ^1.63.0
+        version: 1.63.0
       prettier:
         specifier: ^3.0.0
         version: 3.9.7
@@ -79,6 +82,12 @@ importers:
 
   src/react-ui:
     dependencies:
+      '@cepc/cpu-reference':
+        specifier: workspace:*
+        version: link:../cpu-reference
+      '@cepc/shared-config':
+        specifier: workspace:*
+        version: link:../shared-config
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -144,7 +153,17 @@ importers:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@20.19.43)
 
-  src/web-worker: {}
+  src/web-worker:
+    dependencies:
+      '@cepc/cpu-reference':
+        specifier: workspace:*
+        version: link:../cpu-reference
+      '@cepc/shared-config':
+        specifier: workspace:*
+        version: link:../shared-config
+      '@cepc/webgpu-core':
+        specifier: workspace:*
+        version: link:../webgpu-core
 
   src/webgpu-core:
     devDependencies:
@@ -3141,6 +3160,20 @@ packages:
       confbox: 0.1.8
       mlly: 1.8.2
       pathe: 2.0.3
+    dev: true
+
+  /playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+    dev: true
+
+  /playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
+    dependencies:
+      playwright-core: 1.63.0
     dev: true
 
   /possible-typed-array-names@1.1.0:

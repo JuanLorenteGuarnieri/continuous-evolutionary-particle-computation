@@ -1,5 +1,7 @@
 import { Vector2, ParticleID } from './types.js';
 
+export type ParticleRole = 'internal' | 'input' | 'output';
+
 export interface ParticleStateData {
   readonly version: string;
   readonly position: Vector2;
@@ -8,16 +10,18 @@ export interface ParticleStateData {
   readonly charge: number;
   readonly senderSet: Set<ParticleID>;
   readonly prevSenderSet: Set<ParticleID>;
+  readonly role: ParticleRole;
 }
 
 export class ParticleState implements ParticleStateData {
-  public readonly version: string;
-  public readonly position: Vector2;
-  public readonly velocity: Vector2;
-  public readonly health: number;
-  public readonly charge: number;
-  public readonly senderSet: Set<ParticleID>;
-  public readonly prevSenderSet: Set<ParticleID>;
+  public version: string;
+  public position: Vector2;
+  public velocity: Vector2;
+  public health: number;
+  public charge: number;
+  public senderSet: Set<ParticleID>;
+  public prevSenderSet: Set<ParticleID>;
+  public role: ParticleRole;
 
   constructor(data: Partial<ParticleStateData> = {}) {
     this.version = data.version ?? '3.0.0';
@@ -27,6 +31,7 @@ export class ParticleState implements ParticleStateData {
     this.charge = data.charge ?? 0;
     this.senderSet = data.senderSet ? new Set(data.senderSet) : new Set();
     this.prevSenderSet = data.prevSenderSet ? new Set(data.prevSenderSet) : new Set();
+    this.role = data.role ?? 'internal';
     this.validate();
   }
 
@@ -41,8 +46,8 @@ export class ParticleState implements ParticleStateData {
       typeof (o.velocity as Record<string, unknown>).x === 'number' && typeof (o.velocity as Record<string, unknown>).y === 'number' &&
      typeof o.health === 'number' && o.health >= 0 &&
       typeof o.charge === 'number' && Number.isInteger(o.charge) && o.charge >= 0 &&
-      o.senderSet instanceof Set &&
-      o.prevSenderSet instanceof Set
+      (o.senderSet instanceof Set || Array.isArray(o.senderSet)) &&
+      (o.prevSenderSet instanceof Set || Array.isArray(o.prevSenderSet))
     );
   }
 
@@ -64,6 +69,7 @@ export class ParticleState implements ParticleStateData {
       charge: 0,
       senderSet: new Set(),
       prevSenderSet: new Set(),
+      role: this.role,
     });
   }
 
@@ -83,18 +89,44 @@ export class ParticleState implements ParticleStateData {
       charge: this.charge,
       senderSet: Array.from(this.senderSet),
       prevSenderSet: Array.from(this.prevSenderSet),
+      role: this.role,
     };
   }
 
-  public static fromJSON(obj: Record<string, unknown>): ParticleState {
+  public static fromJSON(obj: unknown): ParticleState {
+    if (typeof obj !== 'object' || obj === null) throw new Error('Invalid ParticleState JSON');
+
+    const o = obj as Record<string, unknown>;
+    const position = o.position;
+    const velocity = o.velocity;
+    const senderSet = o.senderSet;
+    const prevSenderSet = o.prevSenderSet;
+
+    if (
+      typeof o.version !== 'string' ||
+      typeof position !== 'object' || position === null ||
+      typeof (position as Record<string, unknown>).x !== 'number' ||
+      typeof (position as Record<string, unknown>).y !== 'number' ||
+      typeof velocity !== 'object' || velocity === null ||
+      typeof (velocity as Record<string, unknown>).x !== 'number' ||
+      typeof (velocity as Record<string, unknown>).y !== 'number' ||
+      typeof o.health !== 'number' ||
+      typeof o.charge !== 'number' ||
+      !Array.isArray(senderSet) ||
+      !Array.isArray(prevSenderSet)
+    ) {
+      throw new Error('Invalid ParticleState JSON');
+    }
+
     return new ParticleState({
-      version: obj.version,
-      position: obj.position,
-      velocity: obj.velocity,
-      health: obj.health,
-      charge: obj.charge,
-      senderSet: new Set(obj.senderSet ?? []),
-      prevSenderSet: new Set(obj.prevSenderSet ?? []),
+      version: o.version,
+      position: position as Vector2,
+      velocity: velocity as Vector2,
+      health: o.health,
+      charge: o.charge,
+      senderSet: new Set(senderSet as ParticleID[]),
+      prevSenderSet: new Set(prevSenderSet as ParticleID[]),
+      role: o.role === 'input' || o.role === 'output' ? o.role : 'internal',
     });
   }
 }

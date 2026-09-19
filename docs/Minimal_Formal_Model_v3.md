@@ -40,7 +40,7 @@ No novelty reward, state-dependent communication preference, learned per-particl
 
 ---
 
-# 2. Time and State
+## 2. Time and State
 
 Discrete time is
 
@@ -85,7 +85,7 @@ for all states in which particle \(i\) survives.
 
 ---
 
-# 3. Domain
+## 3. Domain
 
 \[
 \Omega=\mathbb T^2=[0,L_x)\times[0,L_y).
@@ -115,7 +115,7 @@ Particles are points. Coincident positions are numerically regularized by \(\var
 
 ---
 
-# 4. Genetic Domain
+## 4. Genetic Domain
 
 The initial genotype is
 
@@ -174,7 +174,7 @@ A later experimental programme may test whether some genes should be removed ent
 
 ---
 
-# 5. External Input
+## 5. External Input
 
 For normalized scalar input
 
@@ -204,7 +204,7 @@ For the scalar baseline, \(I\) may target one designated input particle.
 
 ---
 
-# 6. Charge Reception and Decay
+## 6. Charge Reception and Decay
 
 Let
 
@@ -258,7 +258,7 @@ with
 
 ---
 
-# 7. Processing
+## 7. Processing
 
 If \(\mathsf{act}_i^n=1\), exactly one threshold packet is processed.
 
@@ -280,7 +280,7 @@ No additional nonlinear transformation exists in the MFM v3.
 
 ---
 
-# 8. Communication Neighborhood
+## 8. Communication Neighborhood
 
 The communication neighborhood is
 
@@ -294,7 +294,7 @@ Communication range is genotype-defined and is distinct from the spatial force r
 
 ---
 
-# 9. Genetic Communication Preference
+## 9. Genetic Communication Preference
 
 Normalized genetic features of target \(j\) are denoted
 
@@ -330,7 +330,7 @@ If \(\mathcal N_i^c(n)=\varnothing\), no transmission is possible and the local 
 
 ---
 
-# 10. Communication Update
+## 10. Communication Update
 
 For selected target set \(T_i^n\):
 
@@ -360,7 +360,7 @@ If no transmissions were generated, \(C_i^{n+1}=\varnothing\).
 
 ---
 
-# 11. Local Cycle Completion
+## 11. Local Cycle Completion
 
 Define
 
@@ -400,7 +400,7 @@ is measured but does not yet change health.
 
 ---
 
-# 12. Health Dynamics
+## 12. Health Dynamics
 
 Health is bounded:
 
@@ -446,7 +446,7 @@ Death occurs if
 
 ---
 
-# 13. Charge-Dependent Spatial Range
+## 13. Charge-Dependent Spatial Range
 
 Communication range and mechanical spatial-interaction range remain distinct. The particle's current charge influences only the latter.
 
@@ -473,7 +473,7 @@ R_{s,min}\le R_{s,i}^{eff}(n)\le R_{s,max}.
 The linear bounded mapping is frozen for MFM v3. Nonlinear or saturating charge-to-range laws are experimental variants. The charge cap is applied after charge updates so the invariant is preserved by construction.
 
 
-# 14. Spatial Interaction
+## 14. Spatial Interaction
 
 The spatial neighborhood is
 
@@ -531,7 +531,7 @@ In general:
 
 ---
 
-# 15. Mechanical Update
+## 15. Mechanical Update
 
 For dynamic particles,
 
@@ -562,7 +562,7 @@ Input/output particles remain fixed:
 
 ---
 
-# 16. Output Readout
+## 16. Output Readout
 
 Let
 
@@ -587,7 +587,7 @@ Training of the readout is external to the particle dynamics.
 
 ---
 
-# 17. Global Error
+## 17. Global Error
 
 For task target \(\mathbf y_n\), define
 
@@ -621,7 +621,7 @@ P_{n+1}.
 
 ---
 
-# 18. Reproduction
+## 18. Reproduction
 
 A candidate pair \((i,j)\) satisfies
 
@@ -645,7 +645,7 @@ If a stochastic mating event is accepted and \(N_n<N_{max}\), one offspring \(k\
 
 ---
 
-# 19. Genetic Recombination
+## 19. Genetic Recombination
 
 For continuous gene \(r\):
 
@@ -673,7 +673,7 @@ Mutation is projected into the admissible genetic domain.
 
 ---
 
-# 20. Offspring State
+## 20. Offspring State
 
 For parents i and j, an offspring k begins with no inherited short-term computational state:
 
@@ -704,7 +704,7 @@ and velocity by
 The bounded perturbations \(\varepsilon_x,\varepsilon_v\) provide local dispersal. They are not task-dependent. Offspring do not inherit parent charge or interaction-history buffers.
 
 
-# 21. Population Cap
+## 21. Population Cap
 
 If
 
@@ -720,7 +720,7 @@ Protected input/output particles are excluded from population turnover calculati
 
 ---
 
-# 22. Exact State Transition Operator
+## 22. Exact State Transition Operator
 
 The MFM v3 is synchronous. All current-step decisions are evaluated from a consistent state snapshot, and transmissions are stored in next-step buffers. The global error measured from the current output influences the health update that produces the next state.
 
@@ -752,7 +752,7 @@ The reference causal order is:
 No charge created at step \(n\) can trigger another processing event until step \(n+1\). There are therefore no within-step cascades.
 
 
-# 23. Minimal Pseudocode Semantics
+## 23. Minimal Pseudocode Semantics
 
 ```text
 INPUT:
@@ -805,7 +805,7 @@ The implementation must preserve the causal ordering above. In particular, E_n a
 
 ---
 
-# 24. Consistency Constraints
+## 24. Consistency Constraints
 
 The following constraints are frozen in MFM v3.
 
@@ -868,7 +868,7 @@ The task readout consumes the vector of charges carried by the protected output 
 All next-state updates are committed simultaneously after the current-step events and interactions have been evaluated.
 
 
-# 25. Mathematical Status
+## 25. Mathematical Status
 
 The MFM v3 is intended to be a **well-defined stochastic discrete-time hybrid population process** once all parameter bounds are fixed. The purpose of v3 is not to add new mechanisms but to freeze the decisions emerging from Stage III theoretical analysis so that Stage IV experiments have an unambiguous reference system.
 

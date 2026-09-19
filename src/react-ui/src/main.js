@@ -17,7 +17,7 @@ function App() {
         // Create OffscreenCanvas for WebGPU rendering
         const offscreen = new OffscreenCanvas(800, 600);
         // Create worker from the worker.ts file
-        const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+        const worker = new Worker(new URL('@worker', import.meta.url), { type: 'module' });
         workerRef.current = worker;
         // Send initial message with OffscreenCanvas and config
         const config = {

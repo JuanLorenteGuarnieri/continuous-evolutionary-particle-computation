@@ -44,8 +44,8 @@ export class ExperimentConfig implements ExperimentConfigData {
     return { ...this };
   }
 
-  public static fromJSON(obj: Record<string, unknown>): ExperimentConfig {
+  public static fromJSON(obj: unknown): ExperimentConfig {
     if (!ExperimentConfig.validate(obj)) throw new Error('Invalid ExperimentConfig JSON');
-    return new ExperimentConfig(obj);
+    return new ExperimentConfig(obj as unknown as Record<string, unknown>);
   }
 }

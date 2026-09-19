@@ -2,6 +2,11 @@
   "name": "@cepc/web-worker",
   "version": "0.0.0",
   "private": true,
+  "dependencies": {
+    "@cepc/cpu-reference": "workspace:*",
+    "@cepc/shared-config": "workspace:*",
+    "@cepc/webgpu-core": "workspace:*"
+  },
   "scripts": {
     "test": "echo \"No tests yet\"",
     "lint": "echo \"No lint yet\""

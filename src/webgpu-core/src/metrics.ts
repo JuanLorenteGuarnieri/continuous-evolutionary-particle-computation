@@ -8,6 +8,7 @@ export class MetricsReducer {
    private resultBuffer: GPUBuffer | null = null;
    private healthBuffer: GPUBuffer | null = null;
    private chargeBuffer: GPUBuffer | null = null;
+  private countBuffer: GPUBuffer | null = null;
    private particleCount: number = 0;
 
    constructor(device: GPUDevice) {
@@ -17,25 +18,28 @@ export class MetricsReducer {
    async init() {
      const shaderModule = this.device.createShaderModule({
        code: `
-         @group(0) @binding(0) var<storage, read_only> healthBuf: array<f32>;
-         @group(0) @binding(1) var<storage, read_only> chargeBuf: array<f32>;
+         @group(0) @binding(0) var<storage, read> healthBuf: array<f32>;
+         @group(0) @binding(1) var<storage, read> chargeBuf: array<f32>;
          @group(0) @binding(2) var<storage, read_write> result: array<f32>;
  
          @group(0) @binding(3) var<uniform> params: Params;
  
          struct Params {
-           count: u32;
+           count: u32,
          };
 
          @compute @workgroup_size(256)
          fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
            let idx = gid.x;
-           if (idx >= params.count) return;
+           if (idx >= params.count) {
+             return;
+           }
            let health = healthBuf[idx];
            let charge = chargeBuf[idx];
-           atomicAdd(&result[0], health); // health sum
-           atomicAdd(&result[1], charge); // charge sum
-           atomicAdd(&result[2], 1.0);    // count
+           // Floating-point atomics are not supported by WGSL. Write one
+           // independent result pair per particle and reduce it on the CPU.
+           result[idx * 2u] = health;
+           result[idx * 2u + 1u] = charge;
          }
        `
      });
@@ -73,37 +77,43 @@ export class MetricsReducer {
        }
      });
 
-     // Create result buffer initialized to zero
-     this.resultBuffer = this.device.createBuffer({
-       size: 3 * 4, // 3 floats
-       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-     });
    }
 
    setBuffers(healthBuffer: GPUBuffer, chargeBuffer: GPUBuffer, particleCount: number) {
      this.healthBuffer = healthBuffer;
      this.chargeBuffer = chargeBuffer;
      this.particleCount = particleCount;
+
+     this.resultBuffer?.destroy();
+     this.resultBuffer = this.device.createBuffer({
+       size: Math.max(1, this.particleCount * 2) * 4,
+       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+     });
  
+     if (this.bindGroup) {
+       this.bindGroup = null;
+     }
+
      if (!this.bindGroup) {
+       this.countBuffer = this.device.createBuffer({
+         size: 4,
+         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+       });
+
        this.bindGroup = this.device.createBindGroup({
          layout: this.bindGroupLayout!,
          entries: [
            { binding: 0, resource: { buffer: this.healthBuffer! } },
            { binding: 1, resource: { buffer: this.chargeBuffer! } },
            { binding: 2, resource: { buffer: this.resultBuffer! } },
-           { binding: 3, resource: { buffer: this.device.createBuffer({
-             size: 4,
-             usage: GPUBufferUsage.UNIFORM,
-           }) } }
+           { binding: 3, resource: { buffer: this.countBuffer } }
          ]
        });
      }
  
      // Update the particle count uniform
-     const countBuffer = this.bindGroup!.getResource(3).buffer as GPUBuffer;
      const countData = new Uint32Array([this.particleCount]);
-     this.device.queue.writeBuffer(countBuffer, 0, countData);
+     this.device.queue.writeBuffer(this.countBuffer!, 0, countData);
    }
 
    async computeMetrics(): Promise<{ count: number; healthSum: number; chargeSum: number }> {
@@ -118,21 +128,26 @@ export class MetricsReducer {
      pass.dispatchWorkgroups(Math.ceil(this.particleCount / 256));
      pass.end();
 
-     // Copy result buffer to a staging buffer for reading
+     // Copy per-particle results to a staging buffer for reading.
+     const resultSize = Math.max(1, this.particleCount * 2) * 4;
      const stagingBuffer = this.device.createBuffer({
-       size: 3 * 4,
+       size: resultSize,
        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
      });
-     commandEncoder.copyBuffer(this.resultBuffer, 0, stagingBuffer, 0, 3 * 4);
+     commandEncoder.copyBuffer(this.resultBuffer, 0, stagingBuffer, 0, resultSize);
 
      const gpuAsync = this.device.queue.submit([commandEncoder.finish()]);
      await gpuAsync;
 
      await stagingBuffer.mapAsync(GPUMapMode.READ);
      const array = new Float32Array(stagingBuffer.getMappedRange());
-     const count = array[2];
-     const healthSum = array[0];
-     const chargeSum = array[1];
+     let healthSum = 0;
+     let chargeSum = 0;
+     for (let index = 0; index < this.particleCount; index++) {
+       healthSum += array[index * 2];
+       chargeSum += array[index * 2 + 1];
+     }
+     const count = this.particleCount;
      stagingBuffer.unmap();
      stagingBuffer.destroy();
 
@@ -142,6 +157,7 @@ export class MetricsReducer {
    destroy() {
      this.healthBuffer?.destroy();
      this.chargeBuffer?.destroy();
+    this.countBuffer?.destroy();
      this.resultBuffer?.destroy();
      this.pipeline?.destroy();
      this.bindGroupLayout?.destroy();

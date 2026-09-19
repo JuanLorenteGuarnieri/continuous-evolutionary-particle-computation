@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "@cepc/shared-config": "workspace:*",
+    "@cepc/cpu-reference": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.0",

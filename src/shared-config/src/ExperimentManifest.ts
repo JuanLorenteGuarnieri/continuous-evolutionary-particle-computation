@@ -78,20 +78,31 @@ export class ExperimentManifest implements ExperimentManifestData {
     };
   }
 
-  public static fromJSON(obj: Record<string, unknown>): ExperimentManifest {
-    const mfm = MFMConfig.fromJSON(obj.mfmConfig);
-    const exp = ExperimentConfig.fromJSON(obj.experimentConfig);
+  public static fromJSON(obj: unknown): ExperimentManifest {
+    if (typeof obj !== 'object' || obj === null) throw new Error('Invalid ExperimentManifest JSON');
+
+    const o = obj as Record<string, unknown>;
+    const mfmValue = o.mfmConfig;
+    const expValue = o.experimentConfig;
+
+    if (!MFMConfig.validate(mfmValue)) {
+      throw new Error('Invalid MFMConfig JSON');
+    }
+    if (!ExperimentConfig.validate(expValue)) {
+      throw new Error('Invalid ExperimentConfig JSON');
+    }
+
     return new ExperimentManifest({
-      version: obj.version,
-      experimentId: obj.experimentId,
-      description: obj.description,
-      mfmConfig: mfm,
-      experimentConfig: exp,
-      inputSignal: obj.inputSignal,
-      outputReadout: obj.outputReadout,
-      duration: obj.duration,
-      checkpointInterval: obj.checkpointInterval,
-      metricsToCollect: obj.metricsToCollect,
+      version: typeof o.version === 'string' ? o.version : undefined,
+      experimentId: typeof o.experimentId === 'string' ? o.experimentId : undefined,
+      description: typeof o.description === 'string' ? o.description : undefined,
+      mfmConfig: MFMConfig.fromJSON(mfmValue),
+      experimentConfig: ExperimentConfig.fromJSON(expValue),
+      inputSignal: typeof o.inputSignal === 'object' && o.inputSignal !== null ? o.inputSignal as Record<string, unknown> : {},
+      outputReadout: typeof o.outputReadout === 'object' && o.outputReadout !== null ? o.outputReadout as Record<string, unknown> : {},
+      duration: typeof o.duration === 'number' ? o.duration : undefined,
+      checkpointInterval: typeof o.checkpointInterval === 'number' ? o.checkpointInterval : undefined,
+      metricsToCollect: Array.isArray(o.metricsToCollect) ? o.metricsToCollect.filter((v): v is string => typeof v === 'string') : undefined,
     });
   }
 }

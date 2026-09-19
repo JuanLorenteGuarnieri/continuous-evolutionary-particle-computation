@@ -3,10 +3,10 @@
   "compilerOptions": {
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "sourceMap": true,
     "module": "ESNext",
     "target": "ES2022"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "../shared-config/src/**/*"]
 }
