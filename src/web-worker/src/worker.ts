@@ -1,10 +1,11 @@
-﻿/// <reference lib="webworker" />
+/// <reference lib="webworker" />
 /// <reference lib="dom" />
 import { MfmCpuReference } from '@cepc/cpu-reference';
 import { WebGPUContext, createBuffer } from '@cepc/webgpu-core';
 import { RenderPipeline } from '@cepc/webgpu-core';
 import { MetricsReducer } from '@cepc/webgpu-core';
-import { ParticleState, PopulationState, Genome, MFMConfig, ParticleID } from '@cepc/shared-config';
+import { ParticleState, PopulationState, Genome, MFMConfig, ParticleID } from '@cepc/shared-config';  
+import { MfmWebGPUStepper } from '../../webgpu-mfm/src';
 
 // WebGPU globals for TypeScript
 declare const GPUBufferUsage: {
@@ -31,20 +32,21 @@ let workerFps = 0;
 let inputSignal = 0;
 let backend: 'CPU' | 'WebGPU' = 'CPU';
 
-let simulation: MfmCpuReference | null = null;
-let population: PopulationState | null = null;
-let webgpuContext: WebGPUContext | null = null;
-let renderPipeline: RenderPipeline | null = null;
-let metricsReducer: MetricsReducer | null = null;
+ let simulation: MfmCpuReference | MfmWebGPUStepper | null = null;  
+ let population: PopulationState | null = null;
+ let webgpuContext: WebGPUContext | null = null;
+ let renderPipeline: RenderPipeline | null = null;
+ let metricsReducer: MetricsReducer | null = null;
 
-let positionBuffer: GPUBuffer | null = null;
-let offsetBuffer: GPUBuffer | null = null;
-let healthBuffer: GPUBuffer | null = null;
-let chargeBuffer: GPUBuffer | null = null;
-let particleCount = 0;
- 
-let device: GPUDevice | null = null;
-let webgpuReady = false;
+ let positionBuffer: GPUBuffer | null = null;
+ let offsetBuffer: GPUBuffer | null = null;
+ let healthBuffer: GPUBuffer | null = null;
+ let chargeBuffer: GPUBuffer | null = null;
+ let particleCount = 0;
+  
+ let device: GPUDevice | null = null;
+ let webgpuReady = false;
+ const globalError = 0;
 
 let currentConfig: MFMConfig | null = null;
 let initializationRandomState = 1;
@@ -121,10 +123,11 @@ function varied(value: number, variation: number, minimum: number): number {
   return Math.max(minimum, value * (1 + randomBetween(-variation, variation)));
 }
 
-function advanceSimulationStep(): void {
+async function advanceSimulationStep(): Promise<void> {
   if (!simulation) return;
   injectInputSignal();
-  simulation.step();
+  setGlobalErrorInSimulation();
+  await simulation.step();
   population = simulation.getPopulation();
   timestep++;
   syncRenderBuffers();
@@ -141,6 +144,14 @@ function injectInputSignal(): void {
     if (typeof injectInput === 'function') {
       injectInput.call(simulation, inputSignal);
     }
+  }
+}
+
+
+// Add method to set global error in simulation
+function setGlobalErrorInSimulation(): void {
+  if (simulation) {
+    simulation.setGlobalError(globalError);
   }
 }
 
@@ -170,7 +181,11 @@ async function initialize(config: MFMConfig) {
 
   const initialPopulation = createInitialPopulation(currentConfig);
   population = initialPopulation;
-  simulation = new MfmCpuReference(currentConfig, initialPopulation);
+  if (backend === 'WebGPU' && device !== null) {
+    simulation = new MfmWebGPUStepper(device, currentConfig, initialPopulation);
+  } else {
+    simulation = new MfmCpuReference(currentConfig, initialPopulation);
+  }
   timestep = 0;
 
   // Initialize WebGPU context only if backend is WebGPU
@@ -366,7 +381,7 @@ function initializeBuffers() {
     if (metricsReducer) metricsReducer.setBuffers(healthBuffer, chargeBuffer, particleCount);
 
       // Create offset buffer for a quad (6 vertices per particle)
-      offsetBuffer = createOffsetBuffer(particleCount);
+      offsetBuffer = createOffsetBuffer(device!, particleCount);
 
       // Set initial uniforms (we'll update these later if needed)
       if (renderPipeline && currentConfig) {
@@ -396,7 +411,7 @@ function initializeBuffers() {
   }
 }
  
-function createOffsetBuffer(count: number): GPUBuffer {
+ function createOffsetBuffer(device: GPUDevice, count: number): GPUBuffer {
   // Each particle gets 6 vertices for a quad (two triangles)
   // We'll define the offsets for a unit square centered at origin
   const offsets = new Float32Array([
@@ -412,7 +427,7 @@ function createOffsetBuffer(count: number): GPUBuffer {
   for (let i = 0; i < count; i++) {
     repeated.set(offsets, i * offsets.length);
   }
-  return createBuffer(device!, repeated.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
+  return createBuffer(device, repeated.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
 }
 
 function getInterfaceCharge(role: 'input' | 'output'): number {
@@ -439,7 +454,7 @@ async function renderAndSendBack() {
   // Advance simulation if playing
   if (!isPaused && simulation && population) {
     for (let i = 0; i < stepsPerFrame; i++) {
-      advanceSimulationStep();
+      await advanceSimulationStep();
     }
   }
 
@@ -615,23 +630,27 @@ self.onmessage = async (event: MessageEvent) => {
       break;
     case 'step':
       if (isPaused) {
-        advanceSimulationStep();
+        await advanceSimulationStep();
         await renderAndSendBack();
       }
       break;
-  case 'reset':
-    isPaused = false;
-    timestep = 0;
+    case 'reset':
+      isPaused = false;
+      timestep = 0;
       if (currentConfig) {
-      population = createInitialPopulation(currentConfig); 
-      simulation = new MfmCpuReference(currentConfig, population); 
+        population = createInitialPopulation(currentConfig);
+        if (backend === 'WebGPU' && device !== null) {
+          simulation = new MfmWebGPUStepper(device, currentConfig, population);
+        } else {
+          simulation = new MfmCpuReference(currentConfig, population);
+        }
         timestep = 0;
         syncRenderBuffers();
-      await renderAndSendBack(); 
-    }
+        await renderAndSendBack();
+      }
       break;
     case 'setSpeed':
-      stepsPerFrame = payload.stepsPerFrame; 
+      stepsPerFrame = payload.stepsPerFrame;
       break;
     case 'updateConfig':
     case 'reinit':
@@ -655,7 +674,11 @@ self.onmessage = async (event: MessageEvent) => {
           isPaused = false;
           timestep = 0;
           population = createInitialPopulation(currentConfig);
-          simulation = new MfmCpuReference(currentConfig, population);
+          if (backend === 'WebGPU' && device !== null) {
+            simulation = new MfmWebGPUStepper(device, currentConfig, population);
+          } else {
+            simulation = new MfmCpuReference(currentConfig, population);
+          }
           syncRenderBuffers();
           await renderAndSendBack();
         }
@@ -798,7 +821,7 @@ async function setupRenderBackend() {
     return;
   }
 
-  if (backend === 'WebGPU') {
+  if (backend === 'WebGPU' && device !== null) {
     try {
       webgpuContext = new WebGPUContext();
       const gpu = await webgpuContext.init(offscreen);
@@ -837,9 +860,12 @@ async function setupRenderBackend() {
   }
 }
 // ## Assumptions
-// - The `offscreen` canvas and `currentConfig` remain valid after initialization.
-// - The simulation (`MfmCpuReference`) is backend-agnostic and always runs on CPU (as per current design).
-// - WebGPU is used only for rendering and metrics computation, not for simulation steps.
+// - The simulation uses \MfmCpuReference\ for CPU backend or \MfmWebGPUStepper\ for WebGPU backend.
+// - WebGPU is used for simulation (when WebGPU backend is selected), rendering, and metrics computation.
 // - Particle count does not change during backend switch (only config changes via `updateConfig`/`reinit` affect it).
  
  // End of worker
+
+
+
+

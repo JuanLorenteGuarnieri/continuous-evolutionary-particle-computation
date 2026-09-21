@@ -1,6 +1,7 @@
 import { Genome, MFMConfig, ParticleState, PopulationState } from '@cepc/shared-config';
 import { XorShift32 } from './prng.js';
 import { periodicDelta, periodicDistance, wrap } from './vector2d.js';
+const EPSILON = 1e-6;
 
 type Snapshot = { id: string; state: ParticleState; genome: Genome };
 type Event = { success: boolean; targets: Set<string> };
@@ -168,7 +169,7 @@ export class MfmCpuReference {
 
   private selectTargets(sender: Snapshot, snapshot: Snapshot[]): Snapshot[] {
     if (sender.state.role === 'output') return [];
-    const remaining = snapshot.filter(item => item.id !== sender.id && item.state.role !== 'input' && periodicDistance(
+    const remaining = snapshot.filter(item => item.id !== sender.id && periodicDistance(
       sender.state.position, item.state.position, this.config.Lx, this.config.Ly
     ) <= sender.genome.R_c);
     const selected: Snapshot[] = [];
@@ -203,8 +204,9 @@ export class MfmCpuReference {
           item.genome.omega_A * this.feature(target.genome.A, 10) +
           item.genome.omega_v * this.feature(Math.hypot(target.state.velocity.x, target.state.velocity.y), 10);
         const magnitude = score * (1 - distance / range);
-        forceX += magnitude * delta.x / distance;
-        forceY += magnitude * delta.y / distance;
+const forceFactor = magnitude / (distance + EPSILON);
+forceX += forceFactor * delta.x;
+forceY += forceFactor * delta.y;
       }
       forces.set(item.id, { x: forceX, y: forceY });
     }
@@ -237,15 +239,29 @@ export class MfmCpuReference {
       for (let j = i + 1; j < candidates.length && nextStates.size < this.config.Nmax; j++) {
         const first = candidates[i];
         const second = candidates[j];
-        const matingRadius = Math.min(first.genome.R_c, second.genome.R_c) * this.config.mate_radius_percent;
+        const matingRadius = this.config.R_mate * (this.config.mate_radius_percent / 100);
         if (periodicDistance(first.state.position, second.state.position, this.config.Lx, this.config.Ly) > matingRadius ||
           this.rng.nextFloat() >= this.config.mating_probability) continue;
         const id = `offspring-${this.timestep}-${nextStates.size}`;
         const childGenome = first.genome.crossover(second.genome, this.rng).mutate(this.rng);
         nextGenomes.set(id, childGenome);
         nextStates.set(id, new ParticleState({
-          position: wrap({ x: (first.state.position.x + second.state.position.x) / 2, y: (first.state.position.y + second.state.position.y) / 2 }, this.config.Lx, this.config.Ly),
-          velocity: { x: (first.state.velocity.x + second.state.velocity.x) / 2, y: (first.state.velocity.y + second.state.velocity.y) / 2 },
+        position: (() => {
+            const baseX = (first.state.position.x + second.state.position.x) / 2;
+            const baseY = (first.state.position.y + second.state.position.y) / 2;
+            // Add perturbation: ±1% of domain size
+            const perturbationX = (this.rng.nextFloat() - 0.5) * 2 * this.config.Lx * 0.01;
+            const perturbationY = (this.rng.nextFloat() - 0.5) * 2 * this.config.Ly * 0.01;
+            return wrap({ x: baseX + perturbationX, y: baseY + perturbationY }, this.config.Lx, this.config.Ly);
+        })(),
+        velocity: (() => {
+            const baseVx = (first.state.velocity.x + second.state.velocity.x) / 2;
+            const baseVy = (first.state.velocity.y + second.state.velocity.y) / 2;
+            // Add perturbation: ±0.01 in each component
+            const perturbationVx = (this.rng.nextFloat() - 0.5) * 2 * 0.01;
+            const perturbationVy = (this.rng.nextFloat() - 0.5) * 2 * 0.01;
+            return { x: baseVx + perturbationVx, y: baseVy + perturbationVy };
+        })(),
           health: childGenome.H_max * this.config.birth_health_percent, charge: 0, senderSet: new Set(), prevSenderSet: new Set(), role: 'internal',
         }));
       }
@@ -263,3 +279,4 @@ export class MfmCpuReference {
   private feature(value: number, scale: number): number { return Math.max(0, Math.min(1, value / scale)); }
   private clip(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }
 }
+

@@ -8,4 +8,3 @@ export function loadExperimentManifest(path) {
 export function saveExperimentManifest(manifest, path) {
     writeFileSync(path, JSON.stringify(manifest.toJSON(), null, 2), 'utf-8');
 }
-//# sourceMappingURL=io.js.map

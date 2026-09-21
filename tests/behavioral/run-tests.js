@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { MFMConfig, PopulationState, Genome, ParticleState } from '../../src/shared-config/src/index.js';
-import { MfmCpuReference } from '../../src/cpu-reference/src/MfmCpuReference.js';
+import { MfmCpuReference } from '../../src/cpu-reference/dist/cpu-reference/src/MfmCpuReference.js';
 
 function loadJson(path) {
   return JSON.parse(readFileSync(resolve(__dirname, path), 'utf-8'));

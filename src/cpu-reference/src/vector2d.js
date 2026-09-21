@@ -29,4 +29,3 @@ export function periodicDistance(a, b, Lx, Ly) {
     const d = periodicDelta(a, b, Lx, Ly);
     return Math.hypot(d.x, d.y);
 }
-//# sourceMappingURL=vector2d.js.map

@@ -25,4 +25,3 @@ export class XorShift32 {
     getState() { return this.state; }
     setState(s) { this.state = s >>> 0; }
 }
-//# sourceMappingURL=prng.js.map

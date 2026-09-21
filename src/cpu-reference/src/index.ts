@@ -1,3 +1,3 @@
-export * from './MfmCpuReference.js';
-export * from './prng.js';
-export * from './vector2d.js';
+export * from './MfmCpuReference.ts';
+export * from './prng.ts';
+export * from './vector2d.ts';
