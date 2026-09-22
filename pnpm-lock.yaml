@@ -167,6 +167,9 @@ importers:
       '@cepc/webgpu-core':
         specifier: workspace:*
         version: link:../webgpu-core
+      '@cepc/webgpu-mfm':
+        specifier: workspace:*
+        version: link:../webgpu-mfm
 
   src/webgpu-core:
     devDependencies:

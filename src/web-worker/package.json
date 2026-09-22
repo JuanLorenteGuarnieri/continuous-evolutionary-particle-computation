@@ -5,7 +5,8 @@
   "dependencies": {
     "@cepc/cpu-reference": "workspace:*",
     "@cepc/shared-config": "workspace:*",
-    "@cepc/webgpu-core": "workspace:*"
+    "@cepc/webgpu-core": "workspace:*",
+    "@cepc/webgpu-mfm": "workspace:*"
   },
   "scripts": {
     "test": "echo \"No tests yet\"",

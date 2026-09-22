@@ -1,11 +1,11 @@
 /// <reference lib="webworker" />
 /// <reference lib="dom" />
 import { MfmCpuReference } from '@cepc/cpu-reference';
-import { WebGPUContext, createBuffer } from '@cepc/webgpu-core';
+import { createBuffer } from '@cepc/webgpu-core';
 import { RenderPipeline } from '@cepc/webgpu-core';
 import { MetricsReducer } from '@cepc/webgpu-core';
 import { ParticleState, PopulationState, Genome, MFMConfig } from '@cepc/shared-config';
-import { MfmWebGPUStepper } from '../../webgpu-mfm/src';
+import { MfmWebGPUStepper } from '@cepc/webgpu-mfm';
 const workerScope = self;
 // Worker state
 let offscreen = null;
@@ -18,7 +18,6 @@ let inputSignal = 0;
 let backend = 'CPU';
 let simulation = null;
 let population = null;
-let webgpuContext = null;
 let renderPipeline = null;
 let metricsReducer = null;
 let positionBuffer = null;
@@ -28,7 +27,8 @@ let chargeBuffer = null;
 let particleCount = 0;
 let device = null;
 let webgpuReady = false;
-const globalError = 0;
+const globalError = 0.5;
+let frameInFlight = false;
 let currentConfig = null;
 let initializationRandomState = 1;
 let camera = { x: 0, y: 0, zoom: 1 };
@@ -149,15 +149,11 @@ async function initialize(config) {
     resetCamera();
     const initialPopulation = createInitialPopulation(currentConfig);
     population = initialPopulation;
-    if (backend === 'WebGPU' && device !== null) {
-        simulation = new MfmWebGPUStepper(device, currentConfig, initialPopulation);
-    }
-    else {
-        simulation = new MfmCpuReference(currentConfig, initialPopulation);
-    }
     timestep = 0;
-    // Initialize WebGPU context only if backend is WebGPU
+    // WebGPU setup must run BEFORE constructing the GPU simulation, because
+    // the GPUDevice is acquired asynchronously from the worker's navigator.gpu.
     await setupRenderBackend();
+    recreateSimulationForBackend();
     // Render initial frame and send back OffscreenCanvas
     await renderAndSendBack();
 }
@@ -572,7 +568,18 @@ self.onmessage = async (event) => {
         return; // Not initialized yet
     switch (type) {
         case 'frame':
-            await renderAndSendBack();
+            // main.tsx may post one frame request per animation frame while the
+            // worker is still awaiting GPU readback. Drop stale requests instead
+            // of accumulating extra simulation/render operations.
+            if (frameInFlight)
+                break;
+            frameInFlight = true;
+            try {
+                await renderAndSendBack();
+            }
+            finally {
+                frameInFlight = false;
+            }
             break;
         case 'pause':
             isPaused = true;
@@ -590,13 +597,9 @@ self.onmessage = async (event) => {
             isPaused = false;
             timestep = 0;
             if (currentConfig) {
+                disposeSimulation();
                 population = createInitialPopulation(currentConfig);
-                if (backend === 'WebGPU' && device !== null) {
-                    simulation = new MfmWebGPUStepper(device, currentConfig, population);
-                }
-                else {
-                    simulation = new MfmCpuReference(currentConfig, population);
-                }
+                recreateSimulationForBackend();
                 timestep = 0;
                 syncRenderBuffers();
                 await renderAndSendBack();
@@ -625,13 +628,9 @@ self.onmessage = async (event) => {
                 if (type === 'reinit') {
                     isPaused = false;
                     timestep = 0;
+                    disposeSimulation();
                     population = createInitialPopulation(currentConfig);
-                    if (backend === 'WebGPU' && device !== null) {
-                        simulation = new MfmWebGPUStepper(device, currentConfig, population);
-                    }
-                    else {
-                        simulation = new MfmCpuReference(currentConfig, population);
-                    }
+                    recreateSimulationForBackend();
                     syncRenderBuffers();
                     await renderAndSendBack();
                 }
@@ -680,13 +679,29 @@ self.onmessage = async (event) => {
             grabRangePercent = Math.max(0.005, Math.min(0.5, grabRangePercent + Number(payload?.delta ?? 0)));
             break;
         case 'setBackend':
-            if (payload && payload.backend) {
-                backend = payload.backend;
-                // Reconfigure rendering backend without losing simulation state
-                if (offscreen && currentConfig) {
-                    await setupRenderBackend();
+            if (payload?.backend === 'CPU' || payload?.backend === 'WebGPU') {
+                const requestedBackend = payload.backend;
+                // Preserve the latest simulation state before destroying the old GPU
+                // simulation/device during a backend transition.
+                if (simulation) {
+                    population = simulation.getPopulation();
                 }
-                self.postMessage({ type: 'backend', payload: { backend } });
+                backend = requestedBackend;
+                if (offscreen && currentConfig && population) {
+                    disposeSimulation();
+                    await setupRenderBackend();
+                    recreateSimulationForBackend();
+                    syncRenderBuffers();
+                    await renderAndSendBack();
+                }
+                self.postMessage({
+                    type: 'backend',
+                    payload: {
+                        backend,
+                        activeBackend: simulation instanceof MfmWebGPUStepper ? 'WebGPU' : 'CPU',
+                        webgpuReady,
+                    },
+                });
             }
             break;
     }
@@ -739,7 +754,26 @@ function updateParticleBuffers() {
     if (metricsReducer)
         metricsReducer.setBuffers(healthBuffer, chargeBuffer, particleCount);
 }
+function disposeSimulation() {
+    const current = simulation;
+    simulation = null;
+    if (current && current instanceof MfmWebGPUStepper) {
+        current.destroy();
+    }
+}
+function recreateSimulationForBackend() {
+    if (!currentConfig || !population)
+        return;
+    if (backend === 'WebGPU' && device !== null) {
+        simulation = new MfmWebGPUStepper(device, currentConfig, population);
+        return;
+    }
+    // CPU is both the explicit CPU backend and the automatic fallback when
+    // WebGPU initialization is unavailable or fails.
+    simulation = new MfmCpuReference(currentConfig, population);
+}
 function disposeWebGPUResources() {
+    webgpuReady = false;
     if (positionBuffer) {
         positionBuffer.destroy();
         positionBuffer = null;
@@ -764,53 +798,105 @@ function disposeWebGPUResources() {
         metricsReducer.destroy();
         metricsReducer = null;
     }
-    if (webgpuContext) {
-        webgpuContext.destroy();
-        webgpuContext = null;
-    }
     device = null;
 }
 async function setupRenderBackend() {
-    // Dispose existing WebGPU resources
+    // The GPUDevice is a simulation resource, while the WebGPU canvas context
+    // is only a rendering resource. They must not be coupled.
     disposeWebGPUResources();
     if (!offscreen || !currentConfig || !population) {
-        // Not initialized yet
         return;
     }
-    if (backend === 'WebGPU' && device !== null) {
+    if (backend !== 'WebGPU') {
+        webgpuReady = false;
+        const ctx2d = offscreen.getContext('2d');
+        if (!ctx2d) {
+            console.error('OffscreenCanvas does not support 2D context');
+        }
+        return;
+    }
+    try {
+        console.log('Initializing WebGPU device in worker...');
+        const gpu = navigator.gpu;
+        if (!gpu) {
+            throw new Error('navigator.gpu is unavailable in this worker');
+        }
+        const adapter = await gpu.requestAdapter({
+            powerPreference: 'high-performance',
+        });
+        if (!adapter) {
+            throw new Error('navigator.gpu.requestAdapter() returned null');
+        }
+        // MfmWebGPUStepper uses 16 storage buffers in the communication-select
+        // pipeline and 12 in the force pipeline. WebGPU's default portable limit
+        // is commonly 8, so explicitly request the higher limit only when this
+        // adapter advertises that it supports it.
+        const requiredStorageBuffers = 16;
+        const supportedStorageBuffers = Number(adapter.limits?.maxStorageBuffersPerShaderStage ?? 0);
+        if (supportedStorageBuffers < requiredStorageBuffers) {
+            throw new Error(`WebGPU adapter supports only ${supportedStorageBuffers} storage buffers per shader stage; CEPC requires ${requiredStorageBuffers}.`);
+        }
+        device = await adapter.requestDevice({
+            requiredLimits: {
+                maxStorageBuffersPerShaderStage: requiredStorageBuffers,
+            },
+        });
+        if (!device) {
+            throw new Error('requestDevice() returned no GPUDevice');
+        }
+        // From this point on, GPU simulation is available independently of the
+        // canvas presentation path. Do not throw away the device if rendering
+        // initialization fails.
+        console.log(`WebGPU GPUDevice acquired successfully (storage buffers/stage: ${requiredStorageBuffers}).`);
+        // Metrics are ancillary to the simulation, so a metrics initialization
+        // failure must not disable the GPU backend.
         try {
-            webgpuContext = new WebGPUContext();
-            const gpu = await webgpuContext.init(offscreen);
-            const { device: dev, format } = gpu;
-            device = dev;
-            // Initialize render pipeline
-            renderPipeline = new RenderPipeline(device);
-            await renderPipeline.init(format);
-            // Initialize metrics reducer
             metricsReducer = new MetricsReducer(device);
             await metricsReducer.init();
-            // Initialize buffers (requires current particle data)
-            initializeBuffers();
+        }
+        catch (metricsError) {
+            console.warn('WebGPU metrics initialization failed; continuing without GPU metrics.', metricsError);
+            if (metricsReducer) {
+                metricsReducer.destroy();
+                metricsReducer = null;
+            }
+        }
+        initializeBuffers();
+        // Rendering is a separate concern. If OffscreenCanvas cannot create a
+        // WebGPU context in this browser/environment, keep GPU simulation active
+        // and use the existing CPU/2D rendering path.
+        const canvasContext = offscreen.getContext('webgpu');
+        if (!canvasContext) {
+            console.warn('GPUDevice acquired, but OffscreenCanvas WebGPU rendering context is unavailable; using GPU simulation + CPU rendering.');
+            webgpuReady = false;
+            return;
+        }
+        try {
+            const format = gpu.getPreferredCanvasFormat();
+            canvasContext.configure({
+                device,
+                format,
+                alphaMode: 'premultiplied',
+            });
+            renderPipeline = new RenderPipeline(device);
+            await renderPipeline.init(format);
             webgpuReady = true;
         }
-        catch (e) {
-            console.warn("WebGPU initialization failed falling back to CPU rendering:", e);
-            disposeWebGPUResources();
-            // Ensure 2D context for CPU fallback
-            const ctx2d = offscreen.getContext('2d');
-            if (!ctx2d) {
-                console.error("OffscreenCanvas does not support 2D context either");
+        catch (renderError) {
+            console.warn('GPUDevice is available but WebGPU rendering initialization failed; continuing with GPU simulation + CPU rendering.', renderError);
+            if (renderPipeline) {
+                renderPipeline.destroy();
+                renderPipeline = null;
             }
             webgpuReady = false;
         }
     }
-    else {
-        // CPU backend: skip WebGPU setup
-        webgpuReady = false;
-        // Ensure 2D context for drawing
+    catch (e) {
+        console.warn('WebGPU device initialization failed; falling back to CPU simulation:', e);
+        disposeWebGPUResources();
         const ctx2d = offscreen.getContext('2d');
         if (!ctx2d) {
-            console.error("OffscreenCanvas does not support 2D context");
+            console.error('OffscreenCanvas does not support 2D context either');
         }
     }
 }

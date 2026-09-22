@@ -1,804 +1,2232 @@
-import { MFMConfig, PopulationState } from '@cepc/shared-config';
+import { Genome, MFMConfig, ParticleState, PopulationState } from '@cepc/shared-config';
+/**
+ * GPU implementation of the MFM v3 timestep.
+ *
+ * Design notes:
+ * - Simulation state is stored in Structure-of-Arrays (SoA) GPU buffers.
+ * - State buffers use ping-pong double buffering so all decisions in timestep n
+ *   read the same snapshot and writes go exclusively to timestep n+1 buffers.
+ * - Charge, communication, local-success, health, force and mechanics execute
+ *   as WebGPU compute passes.
+ * - Population topology changes (death/reproduction) are intentionally handled
+ *   on the CPU after the GPU dynamics have completed. This keeps the population
+ *   container compatible with PopulationState while leaving the expensive local
+ *   particle dynamics on the GPU.
+ * - Communication uses deterministic per-particle/per-rank counter-based
+ *   randomness derived from seed + persistent ParticleID hash + timestep.
+ */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-nocheck
+const EPSILON = 1e-6;
+const ROLE_INTERNAL = 0;
+const ROLE_INPUT = 1;
+const ROLE_OUTPUT = 2;
+const SENTINEL = 0xffffffff;
+const UINT32_MAX = 0xffffffff;
+const UNIFORM_BUFFER_SIZE = 96;
+const UNIFORM_DYNAMIC_STRIDE = 256;
+const MAX_GRID_CELLS = 262_144;
+
+// WebGPU enum values are used as local constants so this package does not
+// depend on ambient enum declarations such as GPUBufferUsage/GPUMapMode/
+// GPUShaderStage being present in the TypeScript lib configuration.
+const BUFFER_USAGE_MAP_READ = 0x0001;
+const BUFFER_USAGE_COPY_SRC = 0x0004;
+const BUFFER_USAGE_COPY_DST = 0x0008;
+const BUFFER_USAGE_UNIFORM = 0x0040;
+const BUFFER_USAGE_STORAGE = 0x0080;
+const SHADER_STAGE_COMPUTE = 0x0004;
+const MAP_MODE_READ = 0x0001;
+
+/**
+ * Small deterministic CPU-side RNG used only for reproduction/genome
+ * operations. GPU communication randomness is generated directly in WGSL
+ * from (seed, timestep, ParticleID hash, event/rank), so GPU scheduling never
+ * changes its random stream.
+ */
+class XorShift32 {
+  private state: number;
+
+  constructor(seed: number) {
+    this.state = (seed >>> 0) || 0x6d2b79f5;
+  }
+
+  public nextUint32(): number {
+    let x = this.state >>> 0;
+    x ^= (x << 13) >>> 0;
+    x ^= x >>> 17;
+    x ^= (x << 5) >>> 0;
+    this.state = x >>> 0;
+    return this.state;
+  }
+
+  public nextFloat(): number {
+    return this.nextUint32() / 0x100000000;
+  }
+
+  public getState(): number {
+    return this.state >>> 0;
+  }
+
+  public setState(state: number): void {
+    this.state = (state >>> 0) || 0x6d2b79f5;
+  }
+}
+
+interface Snapshot {
+  id: string;
+  state: ParticleState;
+  genome: Genome;
+}
+
+interface StepEvent {
+  success: boolean;
+  targets: Set<string>;
+}
+
+interface Readback {
+  positions: Float32Array;
+  velocities: Float32Array;
+  healths: Float32Array;
+  charges: Uint32Array;
+  qOut: Uint32Array;
+  active: Uint32Array;
+  successful: Uint32Array;
+  selectedTargets: Uint32Array;
+  selectedCounts: Uint32Array;
+}
+
+type BufferSet = [GPUBuffer, GPUBuffer];
+
+type PipelineBundle = {
+  pipeline: GPUComputePipeline;
+  layout: GPUBindGroupLayout;
+};
+
+/**
+ * A complete WebGPU MFM v3 stepper with CPU-assisted population evolution.
+ */
 export class MfmWebGPUStepper {
   private device: GPUDevice;
-  private bindGroupLayout: GPUBindGroupLayout | null = null;
-  private bindGroup: GPUBindGroup | null = null;
-  private pipeline: GPUComputePipeline | null = null;
-  
-  // Config and state
   private config: MFMConfig;
   private population: PopulationState;
-  private timestep: number;
-  
-  // Particle data buffers
-  private positionBuffer: GPUBuffer | null = null;
-  private velocityBuffer: GPUBuffer | null = null;
-  private healthBuffer: GPUBuffer | null = null;
-  private chargeBuffer: GPUBuffer | null = null;
-  private roleBuffer: GPUBuffer | null = null;
-  
-  // Genome buffers
-  private genomeHMaxBuffer: GPUBuffer | null = null;
-  private genomeThetaQBuffer: GPUBuffer | null = null;
-  private genomeABuffer: GPUBuffer | null = null;
-  private genomeKBuffer: GPUBuffer | null = null;
-  private genomeRcBuffer: GPUBuffer | null = null;
-  private genomeMBuffer: GPUBuffer | null = null;
-  private genomeGammaBuffer: GPUBuffer | null = null;
-  private genomeRsBuffer: GPUBuffer | null = null;
-  private genomeOmegaRBuffer: GPUBuffer | null = null;
-  private genomeOmegaABuffer: GPUBuffer | null = null;
-  private genomeOmegaVBuffer: GPUBuffer | null = null;
-  
-  // Derived data
-  private particleCount: number = 0;
-  
-  constructor(device: GPUDevice, config: MFMConfig, population: PopulationState) {
+  private rng: XorShift32;
+  private readonly seed: number;
+
+  private timestep = 0;
+  private pendingInputSignal: number | null = null;
+  private pendingError: number | null = null;
+
+  /** Charge/sender events generated by the previous GPU timestep. */
+  private incomingChargeMap = new Map<string, number>();
+  private incomingSendersMap = new Map<string, Set<string>>();
+
+  /** Slot mapping. ParticleID is persistent; slotIndex is purely physical. */
+  private slotToId: string[] = [];
+  private idToSlot = new Map<string, number>();
+  private particleIdHashes = new Uint32Array(0);
+
+  private capacity = 1;
+  private particleCount = 0;
+  private maxK = 0;
+  private gridCellSize = 1;
+  private gridCountX = 1;
+  private gridCountY = 1;
+  private initialized = false;
+  private populationDirty = false;
+
+  /**
+   * At most one GPU step may be in flight. Concurrent UI/frame requests are
+   * coalesced onto the current step instead of being queued as extra timesteps.
+   * This prevents shared staging buffers from being mapped by overlapping steps.
+   */
+  private stepInFlight: Promise<PopulationState> | null = null;
+
+  /** Ping-pong state buffers. stateIndex is the read/current state. */
+  private stateIndex = 0;
+  private positionBuffers: BufferSet = [null as never, null as never];
+  private velocityBuffers: BufferSet = [null as never, null as never];
+  private healthBuffers: BufferSet = [null as never, null as never];
+  private chargeBuffers: BufferSet = [null as never, null as never];
+
+  /** Ping-pong charge reception buffers. incomingIndex is the read buffer. */
+  private incomingChargeBuffers: BufferSet = [null as never, null as never];
+  private incomingIndex = 0;
+
+  /** Current/previous transmission event buffers, implemented as append-only CSR-like event lists. */
+  private senderBuffers: BufferSet = [null as never, null as never];
+  private targetBuffers: BufferSet = [null as never, null as never];
+  private senderCountBuffers: BufferSet = [null as never, null as never];
+  private eventIndex = 0;
+
+  /** Spatial grid buffers. A cell stores the head of an atomic linked list of particle slots. */
+  private cellHeadBuffer!: GPUBuffer;
+  private particleNextBuffer!: GPUBuffer;
+
+  /** Static particle/genome buffers. */
+  private roleBuffer!: GPUBuffer;
+  private particleIdHashBuffer!: GPUBuffer;
+  private genomeHMaxBuffer!: GPUBuffer;
+  private genomeThetaQBuffer!: GPUBuffer;
+  private genomeABuffer!: GPUBuffer;
+  private genomeKBuffer!: GPUBuffer;
+  private genomeRcBuffer!: GPUBuffer;
+  private genomeMBuffer!: GPUBuffer;
+  private genomeGammaBuffer!: GPUBuffer;
+  private genomeRsBuffer!: GPUBuffer;
+  private genomeOmegaRBuffer!: GPUBuffer;
+  private genomeOmegaABuffer!: GPUBuffer;
+  private genomeOmegaVBuffer!: GPUBuffer;
+
+  /** Temporary/intermediate buffers. */
+  private qResidualBuffer!: GPUBuffer;
+  private qOutBuffer!: GPUBuffer;
+  private activeBuffer!: GPUBuffer;
+  private successfulBuffer!: GPUBuffer;
+  private selectedTargetsBuffer!: GPUBuffer;
+  private selectedCountBuffer!: GPUBuffer;
+  private forceBuffer!: GPUBuffer;
+  private paramsBuffer!: GPUBuffer;
+
+  /** Staging buffers used by the single batched readback operation. */
+  private stagingPositions!: GPUBuffer;
+  private stagingVelocities!: GPUBuffer;
+  private stagingHealths!: GPUBuffer;
+  private stagingCharges!: GPUBuffer;
+  private stagingQOut!: GPUBuffer;
+  private stagingActive!: GPUBuffer;
+  private stagingSuccessful!: GPUBuffer;
+  private stagingSelectedTargets!: GPUBuffer;
+  private stagingSelectedCounts!: GPUBuffer;
+
+  /** Compute pipelines. */
+  private gridClearPipeline!: PipelineBundle;
+  private gridBuildPipeline!: PipelineBundle;
+  private chargeProcessPipeline!: PipelineBundle;
+  private chargeFinalizePipeline!: PipelineBundle;
+  private communicationSelectPipeline!: PipelineBundle;
+  private communicationTransmitPipeline!: PipelineBundle;
+  private localSuccessPipeline!: PipelineBundle;
+  private healthUpdatePipeline!: PipelineBundle;
+  private forcePipeline!: PipelineBundle;
+  private mechanicsPipeline!: PipelineBundle;
+
+  constructor(device: GPUDevice, config: MFMConfig, population: PopulationState, seed?: number) {
     this.device = device;
     this.config = config;
     this.population = population;
-    this.timestep = 0;
+    this.seed = (seed ?? config.seed ?? 0) >>> 0;
+    this.rng = new XorShift32(this.seed);
+    this.refreshCpuSlotMapping();
   }
-  
-  async init(): Promise<void> {
-    // Initialize GPU buffers and pipelines
-    await this.createBuffers();
+
+  public async init(): Promise<void> {
+    this.validateConfiguration();
     await this.createPipelines();
+    await this.recreateGpuBuffers(true);
+    this.initialized = true;
   }
-  
-  private async createBuffers() {
-    if (!this.population) return;
-   
-    const pop = this.population;
-    this.particleCount = pop.particles.size;
-   
-    // Create buffers for particle data
-    // We'll use separate buffers for each attribute (Structure of Arrays approach)
-    const byteSize = this.particleCount * 4; // 4 bytes per float32
-   
-    // Position buffer (x, y)
-    this.positionBuffer = this.device.createBuffer({
-      size: byteSize * 2,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-   
-    // Velocity buffer (x, y)
-    this.velocityBuffer = this.device.createBuffer({
-      size: byteSize * 2,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-   
-    // Health buffer
-    this.healthBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-   
-    // Charge buffer
-    this.chargeBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-   
-    // Role buffer (0=internal, 1=input, 2=output)
-    this.roleBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-   
-    // Genome buffers
-    this.genomeHMaxBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeThetaQBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeABuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeKBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeRcBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeMBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeGammaBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeRsBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeOmegaRBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeOmegaABuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-    this.genomeOmegaVBuffer = this.device.createBuffer({
-      size: byteSize,
-      usage: 0x0E, // GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-    });
-   
-    // Upload initial data to buffers
-    await this.uploadInitialData();
+
+  public getConfig(): MFMConfig {
+    return this.config;
   }
-  
-  private async uploadInitialData() {
-    if (this.particleCount === 0 || !this.population) return;
-   
-    // Create temporary arrays to hold data
-    const positions = new Float32Array(this.particleCount * 2);
-    const velocities = new Float32Array(this.particleCount * 2);
-    const healths = new Float32Array(this.particleCount);
-    const charges = new Float32Array(this.particleCount);
-    const roles = new Float32Array(this.particleCount);
-    const genomeHMax = new Float32Array(this.particleCount);
-    const genomeThetaQ = new Float32Array(this.particleCount);
-    const genomeA = new Float32Array(this.particleCount);
-    const genomeK = new Float32Array(this.particleCount);
-    const genomeRc = new Float32Array(this.particleCount);
-    const genomeM = new Float32Array(this.particleCount);
-    const genomeGamma = new Float32Array(this.particleCount);
-    const genomeRs = new Float32Array(this.particleCount);
-    const genomeOmegaR = new Float32Array(this.particleCount);
-    const genomeOmegaA = new Float32Array(this.particleCount);
-    const genomeOmegaV = new Float32Array(this.particleCount);
-   
-    // Extract data from population
-    let i = 0;
-    for (const entry of this.population.particles) {
-      const [id, state] = entry;
+
+  public getPopulation(): PopulationState {
+    return this.population;
+  }
+
+  public setConfig(config: MFMConfig): void {
+    this.config = config;
+    this.validateConfiguration();
+    this.populationDirty = true;
+  }
+
+  public setPopulation(population: PopulationState): void {
+    this.population = population;
+    this.populationDirty = true;
+  }
+
+  /** Queue a normalized scalar input for the next timestep. */
+  public injectInput(value: number): void {
+    this.pendingInputSignal = this.clamp(value, 0, 1);
+  }
+
+  /** Queue a normalized global error for the next timestep. */
+  public setGlobalError(error: number): void {
+    this.pendingError = this.clamp(error, 0, 1);
+  }
+
+  /** Execute one complete MFM v3 transition. */
+  private async stepUnsafe(): Promise<PopulationState> {
+    console.log('stepping');
+    if (!this.initialized) {
+      await this.init();
+    }
+
+    this.validateConfiguration();
+
+    if (this.populationDirty) {
+      await this.recreateGpuBuffers(false);
+      this.populationDirty = false;
+    }
+
+    this.refreshCpuSlotMapping();
+    this.ensurePopulationFitsCapacity();
+
+    if (this.particleCount === 0) {
+      this.timestep++;
+      return this.population;
+    }
+
+    const snapshot = this.takeSnapshot();
+    const inputSignal = this.pendingInputSignal ?? 0;
+    const inputSlot = this.findInputSlot(snapshot);
+    const previousIncomingCharges = new Map(this.incomingChargeMap);
+    const previousIncomingSenders = new Map<string, Set<string>>();
+    for (const [id, senders] of this.incomingSendersMap) {
+      previousIncomingSenders.set(id, new Set(senders));
+    }
+
+    // The CPU reference computes pressure from the current snapshot (before
+    // current-timestep GPU processing) and then clears the pending error.
+    const pressure = this.computePressure(snapshot);
+    this.pendingInputSignal = null;
+
+    this.writeParams(0, {
+      inputSignal,
+      inputSlot,
+      globalPressure: pressure,
+      rank: 0,
+    });
+    for (let rank = 0; rank < this.maxK; rank++) {
+      this.writeParams((rank + 1) * UNIFORM_DYNAMIC_STRIDE, {
+        inputSignal,
+        inputSlot,
+        globalPressure: pressure,
+        rank,
+      });
+    }
+
+    const commandEncoder = this.device.createCommandEncoder({
+      label: `mfm-v3-step-${this.timestep}`,
+    });
+
+    const stateRead = this.stateIndex;
+    const stateWrite = 1 - stateRead;
+    const incomingRead = this.incomingIndex;
+    const incomingWrite = 1 - incomingRead;
+    const eventWrite = 1 - this.eventIndex;
+
+    // Reset only buffers that will receive next-step writes.
+    commandEncoder.clearBuffer(this.incomingChargeBuffers[incomingWrite]);
+    commandEncoder.clearBuffer(this.senderCountBuffers[eventWrite]);
+    commandEncoder.clearBuffer(this.selectedCountBuffer);
+
+    // -----------------------------------------------------------------------
+    // Phase 5 optimization — build a toroidal uniform spatial grid before
+    // communication and force queries. The grid is rebuilt from the same n
+    // snapshot and is therefore only an acceleration structure; it does not
+    // alter the mathematical neighborhood definition.
+    // -----------------------------------------------------------------------
+    this.dispatchCompute(
+      commandEncoder,
+      this.gridClearPipeline,
+      this.createGridClearBindGroup(),
+      0,
+      Math.ceil((this.gridCountX * this.gridCountY) / 64),
+    );
+    this.dispatchCompute(commandEncoder, this.gridBuildPipeline, this.createGridBuildBindGroup(stateRead));
+
+    // -----------------------------------------------------------------------
+    // Phase 1/2 — Charge processing + decay/cap
+    // -----------------------------------------------------------------------
+    this.dispatchCompute(commandEncoder, this.chargeProcessPipeline, this.createChargeProcessBindGroup(
+      stateRead,
+      incomingRead,
+    ));
+
+    this.dispatchCompute(commandEncoder, this.chargeFinalizePipeline, this.createChargeFinalizeBindGroup(
+      stateWrite,
+    ));
+
+    // -----------------------------------------------------------------------
+    // Phase 3 — Communication target selection, without replacement.
+    // Each selection rank is a separate dispatch. The previous ranks have
+    // completed before the next rank reads them, eliminating race conditions.
+    // -----------------------------------------------------------------------
+    for (let rank = 0; rank < this.maxK; rank++) {
+      this.dispatchCompute(
+        commandEncoder,
+        this.communicationSelectPipeline,
+        this.createCommunicationSelectBindGroup(stateRead),
+        (rank + 1) * UNIFORM_DYNAMIC_STRIDE,
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 3c — Charge transmission into the next-step reception buffer and
+    // append exact source->target event records.
+    // -----------------------------------------------------------------------
+    for (let rank = 0; rank < this.maxK; rank++) {
+      this.dispatchCompute(
+        commandEncoder,
+        this.communicationTransmitPipeline,
+        this.createCommunicationTransmitBindGroup(stateRead, incomingWrite, eventWrite),
+        (rank + 1) * UNIFORM_DYNAMIC_STRIDE,
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4 — Local cycle success and history event creation.
+    // -----------------------------------------------------------------------
+    this.dispatchCompute(commandEncoder, this.localSuccessPipeline, this.createLocalSuccessBindGroup(
+      incomingRead,
+    ));
+
+    // -----------------------------------------------------------------------
+    // Phase 5 — Health / global pressure.
+    // -----------------------------------------------------------------------
+    this.dispatchCompute(commandEncoder, this.healthUpdatePipeline, this.createHealthUpdateBindGroup(
+      stateRead,
+      stateWrite,
+    ));
+
+    // -----------------------------------------------------------------------
+    // Phase 6 — Charge-dependent spatial range + asymmetric force.
+    // Force deliberately reads q_i^n from stateRead, not q_i^{n+1}.
+    // -----------------------------------------------------------------------
+    this.dispatchCompute(commandEncoder, this.forcePipeline, this.createForceBindGroup(
+      stateRead,
+    ));
+
+    // -----------------------------------------------------------------------
+    // Phase 7 — Semi-implicit Euler mechanics.
+    // -----------------------------------------------------------------------
+    this.dispatchCompute(commandEncoder, this.mechanicsPipeline, this.createMechanicsBindGroup(
+      stateRead,
+      stateWrite,
+    ));
+
+    commandEncoder.copyBufferToBuffer(
+      this.positionBuffers[stateWrite],
+      0,
+      this.stagingPositions,
+      0,
+      this.particleCount * 8,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.velocityBuffers[stateWrite],
+      0,
+      this.stagingVelocities,
+      0,
+      this.particleCount * 8,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.healthBuffers[stateWrite],
+      0,
+      this.stagingHealths,
+      0,
+      this.particleCount * 4,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.chargeBuffers[stateWrite],
+      0,
+      this.stagingCharges,
+      0,
+      this.particleCount * 4,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.qOutBuffer,
+      0,
+      this.stagingQOut,
+      0,
+      this.particleCount * 4,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.activeBuffer,
+      0,
+      this.stagingActive,
+      0,
+      this.particleCount * 4,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.successfulBuffer,
+      0,
+      this.stagingSuccessful,
+      0,
+      this.particleCount * 4,
+    );
+    commandEncoder.copyBufferToBuffer(
+      this.selectedCountBuffer,
+      0,
+      this.stagingSelectedCounts,
+      0,
+      this.particleCount * 4,
+    );
+    if (this.maxK > 0) {
+      commandEncoder.copyBufferToBuffer(
+        this.selectedTargetsBuffer,
+        0,
+        this.stagingSelectedTargets,
+        0,
+        this.particleCount * this.maxK * 4,
+      );
+    }
+
+    this.device.queue.submit([commandEncoder.finish()]);
+    await this.device.queue.onSubmittedWorkDone();
+
+    const readback = await this.readbackResults();
+
+    // The GPU writes now represent P_{n+1} for surviving current particles.
+    this.stateIndex = stateWrite;
+    this.incomingIndex = incomingWrite;
+    this.eventIndex = eventWrite;
+
+    // Build exact current-step event maps from the GPU selection result.
+    const nextIncomingCharges = new Map<string, number>();
+    const nextIncomingSenders = new Map<string, Set<string>>();
+    const events = new Map<string, StepEvent>();
+
+    for (let i = 0; i < this.particleCount; i++) {
+      const senderId = this.slotToId[i];
+      const receivedCharge = previousIncomingCharges.get(senderId) ?? 0;
+      const receivedFromInput = i === inputSlot && inputSignal > 0;
+      const active = readback.active[i] !== 0;
+      const targets = new Set<string>();
+      const selectedCount = Math.min(
+        readback.selectedCounts[i] ?? 0,
+        this.maxK,
+        Math.max(0, Math.floor(snapshot[i].genome.K)),
+      );
+
+      if (this.maxK > 0) {
+        const rowBase = i * this.maxK;
+        for (let rank = 0; rank < selectedCount; rank++) {
+          const targetSlot = readback.selectedTargets[rowBase + rank];
+          if (targetSlot === SENTINEL || targetSlot >= this.particleCount) continue;
+
+          const targetId = this.slotToId[targetSlot];
+          targets.add(targetId);
+
+          const amount = readback.qOut[i] >>> 0;
+          nextIncomingCharges.set(
+            targetId,
+            (nextIncomingCharges.get(targetId) ?? 0) + amount,
+          );
+
+          const senders = nextIncomingSenders.get(targetId) ?? new Set<string>();
+          senders.add(senderId);
+          nextIncomingSenders.set(targetId, senders);
+        }
+      }
+
+      events.set(senderId, {
+        success: (receivedCharge > 0 || receivedFromInput) && active && selectedCount > 0,
+        targets,
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 8 — Population dynamics. Death/reproduction remains on CPU so the
+    // public PopulationState and logical ParticleID map remain straightforward.
+    // -----------------------------------------------------------------------
+    const nextStates = new Map<string, ParticleState>();
+    const nextGenomes = new Map<string, Genome>();
+
+    for (let i = 0; i < snapshot.length; i++) {
+      const item = snapshot[i];
+      const nextHealth = readback.healths[i];
+      const protectedParticle = item.state.role !== 'internal';
+
+      if (!protectedParticle && nextHealth <= 0) {
+        continue;
+      }
+
+      const nextState = new ParticleState({
+        version: item.state.version,
+        position: {
+          x: readback.positions[i * 2],
+          y: readback.positions[i * 2 + 1],
+        },
+        velocity: {
+          x: protectedParticle ? 0 : readback.velocities[i * 2],
+          y: protectedParticle ? 0 : readback.velocities[i * 2 + 1],
+        },
+        health: protectedParticle ? item.state.health : nextHealth,
+        charge: readback.charges[i],
+        senderSet: new Set(nextIncomingSenders.get(item.id) ?? []),
+        prevSenderSet: new Set(previousIncomingSenders.get(item.id) ?? []),
+        role: item.state.role,
+      });
+
+      nextStates.set(item.id, nextState);
+      nextGenomes.set(item.id, item.genome.clone());
+    }
+
+    this.addOffspring(snapshot, nextStates, nextGenomes, events);
+
+    const nextPopulation = new PopulationState();
+    for (const [id, state] of nextStates) {
+      const genome = nextGenomes.get(id);
+      if (genome) nextPopulation.addParticle(id, genome, state);
+    }
+
+    this.population = nextPopulation;
+    this.incomingChargeMap = nextIncomingCharges;
+    this.incomingSendersMap = nextIncomingSenders;
+
+    // Population changes are applied after mechanics, exactly as in the CPU
+    // reference. New children enter with q=0 and empty history.
+    this.refreshCpuSlotMapping();
+    await this.resyncAfterPopulationStep();
+
+    this.timestep++;
+    return this.population;
+  }
+
+  public step(): Promise<PopulationState> {
+    if (this.stepInFlight) {
+      return this.stepInFlight;
+    }
+
+    const inFlight = this.stepUnsafe();
+    let tracked: Promise<PopulationState>;
+    // eslint-disable-next-line prefer-const
+    tracked = inFlight.then(
+      (value) => {
+        if (this.stepInFlight === tracked) {
+          this.stepInFlight = null;
+        }
+        return value;
+      },
+      (error) => {
+        if (this.stepInFlight === tracked) {
+          this.stepInFlight = null;
+        }
+        throw error;
+      },
+    );
+    this.stepInFlight = tracked;
+    return tracked;
+  }
+
+  public async run(steps: number): Promise<PopulationState[]> {
+    const trajectory: PopulationState[] = [];
+    for (let i = 0; i < steps; i++) trajectory.push(await this.step());
+    return trajectory;
+  }
+
+  /**
+   * Checkpoint state. The shape intentionally mirrors MfmCpuReference.getState
+   * and includes one extra internal counter only where required by the GPU
+   * implementation.
+   */
+  public getState(): Record<string, unknown> {
+    return {
+      timestep: this.timestep,
+      population: this.population.toJSON(),
+      rngState: this.rng.getState(),
+      pendingInputSignal: this.pendingInputSignal,
+      pendingError: this.pendingError,
+      incomingCharges: Array.from(this.incomingChargeMap.entries()),
+      incomingSenders: Array.from(this.incomingSendersMap.entries()).map(([id, senders]) => [
+        id,
+        Array.from(senders),
+      ]),
+    };
+  }
+
+  public async setState(state: Record<string, unknown>): Promise<void> {
+    this.timestep = typeof state.timestep === 'number' ? state.timestep : 0;
+    this.population = PopulationState.fromJSON(state.population);
+    if (typeof state.rngState === 'number') this.rng.setState(state.rngState);
+    this.pendingInputSignal = typeof state.pendingInputSignal === 'number' ? state.pendingInputSignal : null;
+    this.pendingError = typeof state.pendingError === 'number' ? state.pendingError : null;
+
+    this.incomingChargeMap = new Map(
+      Array.isArray(state.incomingCharges)
+        ? state.incomingCharges.filter(
+            (entry): entry is [string, number] =>
+              Array.isArray(entry) &&
+              typeof entry[0] === 'string' &&
+              typeof entry[1] === 'number',
+          )
+        : [],
+    );
+
+    this.incomingSendersMap = new Map(
+      Array.isArray(state.incomingSenders)
+        ? state.incomingSenders
+            .filter(
+              (entry): entry is [string, string[]] =>
+                Array.isArray(entry) &&
+                typeof entry[0] === 'string' &&
+                Array.isArray(entry[1]),
+            )
+            .map(([id, senders]) => [
+              id,
+              new Set(senders.filter((sender): sender is string => typeof sender === 'string')),
+            ])
+        : [],
+    );
+
+    this.refreshCpuSlotMapping();
+    if (this.initialized) {
+      await this.recreateGpuBuffers(false);
+    } else {
+      this.populationDirty = true;
+    }
+  }
+
+  public async saveState(): Promise<Record<string, unknown>> {
+    return this.getState();
+  }
+
+  public async loadState(state: Record<string, unknown>): Promise<void> {
+    await this.setState(state);
+  }
+
+  /** Return transient q_out for the latest GPU step if needed by diagnostics/UI. */
+  public async readLatestProcessedOutputCharge(): Promise<Uint32Array> {
+    if (!this.initialized || this.particleCount === 0) return new Uint32Array(0);
+    const commandEncoder = this.device.createCommandEncoder({ label: 'read-mfm-qout' });
+    const staging = this.device.createBuffer({
+      size: Math.max(4, this.particleCount * 4),
+      usage: BUFFER_USAGE_MAP_READ | BUFFER_USAGE_COPY_DST,
+    });
+    commandEncoder.copyBufferToBuffer(this.qOutBuffer, 0, staging, 0, this.particleCount * 4);
+    this.device.queue.submit([commandEncoder.finish()]);
+    await this.device.queue.onSubmittedWorkDone();
+    await staging.mapAsync(MAP_MODE_READ);
+    const result = new Uint32Array(staging.getMappedRange().slice(0));
+    staging.unmap();
+    staging.destroy();
+    return result.slice(0, this.particleCount);
+  }
+
+  public destroy(): void {
+    const buffers: GPUBuffer[] = [
+      ...this.positionBuffers,
+      ...this.velocityBuffers,
+      ...this.healthBuffers,
+      ...this.chargeBuffers,
+      ...this.incomingChargeBuffers,
+      ...this.senderBuffers,
+      ...this.targetBuffers,
+      ...this.senderCountBuffers,
+      this.cellHeadBuffer,
+      this.particleNextBuffer,
+      this.roleBuffer,
+      this.particleIdHashBuffer,
+      this.genomeHMaxBuffer,
+      this.genomeThetaQBuffer,
+      this.genomeABuffer,
+      this.genomeKBuffer,
+      this.genomeRcBuffer,
+      this.genomeMBuffer,
+      this.genomeGammaBuffer,
+      this.genomeRsBuffer,
+      this.genomeOmegaRBuffer,
+      this.genomeOmegaABuffer,
+      this.genomeOmegaVBuffer,
+      this.qResidualBuffer,
+      this.qOutBuffer,
+      this.activeBuffer,
+      this.successfulBuffer,
+      this.selectedTargetsBuffer,
+      this.selectedCountBuffer,
+      this.forceBuffer,
+      this.paramsBuffer,
+      this.stagingPositions,
+      this.stagingVelocities,
+      this.stagingHealths,
+      this.stagingCharges,
+      this.stagingQOut,
+      this.stagingActive,
+      this.stagingSuccessful,
+      this.stagingSelectedTargets,
+      this.stagingSelectedCounts,
+    ];
+
+    const seen = new Set<GPUBuffer>();
+    for (const buffer of buffers) {
+      if (buffer && !seen.has(buffer)) {
+        seen.add(buffer);
+        buffer.destroy();
+      }
+    }
+
+    this.initialized = false;
+  }
+
+  // -------------------------------------------------------------------------
+  // GPU resource setup
+  // -------------------------------------------------------------------------
+
+  private async recreateGpuBuffers(initialUpload: boolean): Promise<void> {
+    this.refreshCpuSlotMapping();
+    this.ensurePopulationFitsCapacity();
+
+    const nextCapacity = Math.max(1, this.config.Nmax, this.population.particles.size);
+    const nextMaxK = this.computeRequiredMaxK();
+    const nextGrid = this.computeGridSpec();
+    const gridChanged =
+      this.gridCountX !== nextGrid.countX ||
+      this.gridCountY !== nextGrid.countY ||
+      Math.abs(this.gridCellSize - nextGrid.cellSize) > 1e-12;
+
+    if (
+      this.capacity !== nextCapacity ||
+      this.maxK !== nextMaxK ||
+      gridChanged ||
+      !this.roleBuffer ||
+      initialUpload
+    ) {
+      this.destroyDataBuffersOnly();
+      this.capacity = nextCapacity;
+      this.maxK = nextMaxK;
+      this.gridCountX = nextGrid.countX;
+      this.gridCountY = nextGrid.countY;
+      this.gridCellSize = nextGrid.cellSize;
+      this.createDataBuffers();
+      await this.uploadPopulationToGpu();
+    } else {
+      await this.uploadPopulationToGpu();
+    }
+
+    this.populationDirty = false;
+  }
+
+  private createDataBuffers(): void {
+    const float2Bytes = this.capacity * 8;
+    const floatBytes = this.capacity * 4;
+    const uintBytes = this.capacity * 4;
+    const eventBytes = Math.max(4, this.capacity * Math.max(1, this.maxK) * 4);
+    const paramBlocks = Math.max(1, this.maxK + 1);
+    const paramBytes = paramBlocks * UNIFORM_DYNAMIC_STRIDE;
+
+    const storage = BUFFER_USAGE_STORAGE | BUFFER_USAGE_COPY_DST | BUFFER_USAGE_COPY_SRC;
+    const readWrite = storage;
+
+    const make = (size: number, usage = storage, label?: string) =>
+      this.device.createBuffer({
+        size: Math.max(4, size),
+        usage,
+        label,
+      });
+
+    this.positionBuffers = [make(float2Bytes, readWrite, 'mfm-position-0'), make(float2Bytes, readWrite, 'mfm-position-1')];
+    this.velocityBuffers = [make(float2Bytes, readWrite, 'mfm-velocity-0'), make(float2Bytes, readWrite, 'mfm-velocity-1')];
+    this.healthBuffers = [make(floatBytes, readWrite, 'mfm-health-0'), make(floatBytes, readWrite, 'mfm-health-1')];
+    this.chargeBuffers = [make(uintBytes, readWrite, 'mfm-charge-0'), make(uintBytes, readWrite, 'mfm-charge-1')];
+
+    this.incomingChargeBuffers = [make(uintBytes, readWrite, 'mfm-incoming-0'), make(uintBytes, readWrite, 'mfm-incoming-1')];
+    this.senderBuffers = [make(eventBytes, readWrite, 'mfm-sender-events-0'), make(eventBytes, readWrite, 'mfm-sender-events-1')];
+    this.targetBuffers = [make(eventBytes, readWrite, 'mfm-target-events-0'), make(eventBytes, readWrite, 'mfm-target-events-1')];
+    this.senderCountBuffers = [make(4, readWrite, 'mfm-event-count-0'), make(4, readWrite, 'mfm-event-count-1')];
+
+    const gridCellCount = this.gridCountX * this.gridCountY;
+    this.cellHeadBuffer = make(Math.max(4, gridCellCount * 4), readWrite, 'mfm-grid-head');
+    this.particleNextBuffer = make(Math.max(4, this.capacity * 4), readWrite, 'mfm-grid-next');
+
+    this.roleBuffer = make(uintBytes, readWrite, 'mfm-role');
+    this.particleIdHashBuffer = make(uintBytes, readWrite, 'mfm-id-hash');
+    this.genomeHMaxBuffer = make(floatBytes, readWrite, 'mfm-g-hmax');
+    this.genomeThetaQBuffer = make(uintBytes, readWrite, 'mfm-g-theta');
+    this.genomeABuffer = make(floatBytes, readWrite, 'mfm-g-a');
+    this.genomeKBuffer = make(uintBytes, readWrite, 'mfm-g-k');
+    this.genomeRcBuffer = make(floatBytes, readWrite, 'mfm-g-rc');
+    this.genomeMBuffer = make(floatBytes, readWrite, 'mfm-g-m');
+    this.genomeGammaBuffer = make(floatBytes, readWrite, 'mfm-g-gamma');
+    this.genomeRsBuffer = make(floatBytes, readWrite, 'mfm-g-rs');
+    this.genomeOmegaRBuffer = make(floatBytes, readWrite, 'mfm-g-omega-r');
+    this.genomeOmegaABuffer = make(floatBytes, readWrite, 'mfm-g-omega-a');
+    this.genomeOmegaVBuffer = make(floatBytes, readWrite, 'mfm-g-omega-v');
+
+    this.qResidualBuffer = make(uintBytes, readWrite, 'mfm-q-residual');
+    this.qOutBuffer = make(uintBytes, readWrite, 'mfm-q-out');
+    this.activeBuffer = make(uintBytes, readWrite, 'mfm-active');
+    this.successfulBuffer = make(uintBytes, readWrite, 'mfm-success');
+    this.selectedTargetsBuffer = make(eventBytes, readWrite, 'mfm-selected-targets');
+    this.selectedCountBuffer = make(uintBytes, readWrite, 'mfm-selected-count');
+    this.forceBuffer = make(float2Bytes, readWrite, 'mfm-force');
+    this.paramsBuffer = this.device.createBuffer({
+      size: paramBytes,
+      usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
+      label: 'mfm-params',
+    });
+
+    const stagingUsage = BUFFER_USAGE_MAP_READ | BUFFER_USAGE_COPY_DST;
+    this.stagingPositions = make(float2Bytes, stagingUsage, 'mfm-stage-positions');
+    this.stagingVelocities = make(float2Bytes, stagingUsage, 'mfm-stage-velocities');
+    this.stagingHealths = make(floatBytes, stagingUsage, 'mfm-stage-health');
+    this.stagingCharges = make(uintBytes, stagingUsage, 'mfm-stage-charge');
+    this.stagingQOut = make(uintBytes, stagingUsage, 'mfm-stage-qout');
+    this.stagingActive = make(uintBytes, stagingUsage, 'mfm-stage-active');
+    this.stagingSuccessful = make(uintBytes, stagingUsage, 'mfm-stage-success');
+    this.stagingSelectedTargets = make(eventBytes, stagingUsage, 'mfm-stage-targets');
+    this.stagingSelectedCounts = make(uintBytes, stagingUsage, 'mfm-stage-selected-counts');
+  }
+
+  private destroyDataBuffersOnly(): void {
+    const buffers: GPUBuffer[] = [
+      ...this.positionBuffers,
+      ...this.velocityBuffers,
+      ...this.healthBuffers,
+      ...this.chargeBuffers,
+      ...this.incomingChargeBuffers,
+      ...this.senderBuffers,
+      ...this.targetBuffers,
+      ...this.senderCountBuffers,
+      this.cellHeadBuffer,
+      this.particleNextBuffer,
+      this.roleBuffer,
+      this.particleIdHashBuffer,
+      this.genomeHMaxBuffer,
+      this.genomeThetaQBuffer,
+      this.genomeABuffer,
+      this.genomeKBuffer,
+      this.genomeRcBuffer,
+      this.genomeMBuffer,
+      this.genomeGammaBuffer,
+      this.genomeRsBuffer,
+      this.genomeOmegaRBuffer,
+      this.genomeOmegaABuffer,
+      this.genomeOmegaVBuffer,
+      this.qResidualBuffer,
+      this.qOutBuffer,
+      this.activeBuffer,
+      this.successfulBuffer,
+      this.selectedTargetsBuffer,
+      this.selectedCountBuffer,
+      this.forceBuffer,
+      this.paramsBuffer,
+      this.stagingPositions,
+      this.stagingVelocities,
+      this.stagingHealths,
+      this.stagingCharges,
+      this.stagingQOut,
+      this.stagingActive,
+      this.stagingSuccessful,
+      this.stagingSelectedTargets,
+      this.stagingSelectedCounts,
+    ];
+
+    const seen = new Set<GPUBuffer>();
+    for (const buffer of buffers) {
+      if (buffer && !seen.has(buffer)) {
+        seen.add(buffer);
+        buffer.destroy();
+      }
+    }
+  }
+
+  private async uploadPopulationToGpu(): Promise<void> {
+    this.refreshCpuSlotMapping();
+    this.particleCount = this.population.particles.size;
+
+    const positions = new Float32Array(this.capacity * 2);
+    const velocities = new Float32Array(this.capacity * 2);
+    const healths = new Float32Array(this.capacity);
+    const charges = new Uint32Array(this.capacity);
+    const roles = new Uint32Array(this.capacity);
+    const idHashes = new Uint32Array(this.capacity);
+
+    const hmax = new Float32Array(this.capacity);
+    const theta = new Uint32Array(this.capacity);
+    const a = new Float32Array(this.capacity);
+    const k = new Uint32Array(this.capacity);
+    const rc = new Float32Array(this.capacity);
+    const mass = new Float32Array(this.capacity);
+    const gamma = new Float32Array(this.capacity);
+    const rs = new Float32Array(this.capacity);
+    const omegaR = new Float32Array(this.capacity);
+    const omegaA = new Float32Array(this.capacity);
+    const omegaV = new Float32Array(this.capacity);
+
+    this.particleIdHashes = idHashes;
+
+    let slot = 0;
+    for (const [id, state] of this.population.particles) {
       const genome = this.population.genomes.get(id);
       if (!genome) continue;
-       
-      positions[i * 2] = state.position.x;
-      positions[i * 2 + 1] = state.position.y;
-      velocities[i * 2] = state.velocity.x;
-      velocities[i * 2 + 1] = state.velocity.y;
-      healths[i] = state.health;
-      charges[i] = state.charge;
-      roles[i] = state.role === 'input' ? 1 : state.role === 'output' ? 2 : 0;
-      genomeHMax[i] = genome.H_max;
-      genomeThetaQ[i] = genome.theta_q;
-      genomeA[i] = genome.A;
-      genomeK[i] = genome.K;
-      genomeRc[i] = genome.R_c;
-      genomeM[i] = genome.m;
-      genomeGamma[i] = genome.gamma;
-      genomeRs[i] = genome.R_s;
-      genomeOmegaR[i] = genome.omega_R;
-      genomeOmegaA[i] = genome.omega_A;
-      genomeOmegaV[i] = genome.omega_v;
-      i++;
+
+      positions[slot * 2] = state.position.x;
+      positions[slot * 2 + 1] = state.position.y;
+      velocities[slot * 2] = state.velocity.x;
+      velocities[slot * 2 + 1] = state.velocity.y;
+      healths[slot] = state.health;
+      charges[slot] = this.clampInteger(state.charge, 0, this.config.Qmax);
+      roles[slot] = this.encodeRole(state.role);
+      idHashes[slot] = this.hashParticleId(id);
+
+      hmax[slot] = genome.H_max;
+      theta[slot] = this.clampInteger(genome.theta_q, 0, UINT32_MAX);
+      a[slot] = genome.A;
+      k[slot] = this.clampInteger(Math.floor(genome.K), 0, UINT32_MAX);
+      rc[slot] = genome.R_c;
+      mass[slot] = genome.m;
+      gamma[slot] = genome.gamma;
+      rs[slot] = genome.R_s;
+      omegaR[slot] = genome.omega_R;
+      omegaA[slot] = genome.omega_A;
+      omegaV[slot] = genome.omega_v;
+      slot++;
     }
-   
-    // Write data to buffers
-    if (this.positionBuffer) this.device.queue.writeBuffer(this.positionBuffer, 0, positions);
-    if (this.velocityBuffer) this.device.queue.writeBuffer(this.velocityBuffer, 0, velocities);
-    if (this.healthBuffer) this.device.queue.writeBuffer(this.healthBuffer, 0, healths);
-    if (this.chargeBuffer) this.device.queue.writeBuffer(this.chargeBuffer, 0, charges);
-    if (this.roleBuffer) this.device.queue.writeBuffer(this.roleBuffer, 0, roles);
-    if (this.genomeHMaxBuffer) this.device.queue.writeBuffer(this.genomeHMaxBuffer, 0, genomeHMax);
-    if (this.genomeThetaQBuffer) this.device.queue.writeBuffer(this.genomeThetaQBuffer, 0, genomeThetaQ);
-    if (this.genomeABuffer) this.device.queue.writeBuffer(this.genomeABuffer, 0, genomeA);
-    if (this.genomeKBuffer) this.device.queue.writeBuffer(this.genomeKBuffer, 0, genomeK);
-    if (this.genomeRcBuffer) this.device.queue.writeBuffer(this.genomeRcBuffer, 0, genomeRc);
-    if (this.genomeMBuffer) this.device.queue.writeBuffer(this.genomeMBuffer, 0, genomeM);
-    if (this.genomeGammaBuffer) this.device.queue.writeBuffer(this.genomeGammaBuffer, 0, genomeGamma);
-    if (this.genomeRsBuffer) this.device.queue.writeBuffer(this.genomeRsBuffer, 0, genomeRs);
-    if (this.genomeOmegaRBuffer) this.device.queue.writeBuffer(this.genomeOmegaRBuffer, 0, genomeOmegaR);
-    if (this.genomeOmegaABuffer) this.device.queue.writeBuffer(this.genomeOmegaABuffer, 0, genomeOmegaA);
-    if (this.genomeOmegaVBuffer) this.device.queue.writeBuffer(this.genomeOmegaVBuffer, 0, genomeOmegaV);
+
+    this.device.queue.writeBuffer(this.positionBuffers[this.stateIndex], 0, positions);
+    this.device.queue.writeBuffer(this.velocityBuffers[this.stateIndex], 0, velocities);
+    this.device.queue.writeBuffer(this.healthBuffers[this.stateIndex], 0, healths);
+    this.device.queue.writeBuffer(this.chargeBuffers[this.stateIndex], 0, charges);
+
+    // The write-side state buffers are overwritten fully by the compute passes;
+    // initialize them anyway to keep debugging/readback sane after reset.
+    this.device.queue.writeBuffer(this.positionBuffers[1 - this.stateIndex], 0, positions);
+    this.device.queue.writeBuffer(this.velocityBuffers[1 - this.stateIndex], 0, velocities);
+    this.device.queue.writeBuffer(this.healthBuffers[1 - this.stateIndex], 0, healths);
+    this.device.queue.writeBuffer(this.chargeBuffers[1 - this.stateIndex], 0, charges);
+
+    this.device.queue.writeBuffer(this.roleBuffer, 0, roles);
+    this.device.queue.writeBuffer(this.particleIdHashBuffer, 0, idHashes);
+    this.device.queue.writeBuffer(this.genomeHMaxBuffer, 0, hmax);
+    this.device.queue.writeBuffer(this.genomeThetaQBuffer, 0, theta);
+    this.device.queue.writeBuffer(this.genomeABuffer, 0, a);
+    this.device.queue.writeBuffer(this.genomeKBuffer, 0, k);
+    this.device.queue.writeBuffer(this.genomeRcBuffer, 0, rc);
+    this.device.queue.writeBuffer(this.genomeMBuffer, 0, mass);
+    this.device.queue.writeBuffer(this.genomeGammaBuffer, 0, gamma);
+    this.device.queue.writeBuffer(this.genomeRsBuffer, 0, rs);
+    this.device.queue.writeBuffer(this.genomeOmegaRBuffer, 0, omegaR);
+    this.device.queue.writeBuffer(this.genomeOmegaABuffer, 0, omegaA);
+    this.device.queue.writeBuffer(this.genomeOmegaVBuffer, 0, omegaV);
+
+    const scheduledIncoming = new Uint32Array(this.capacity);
+    for (let i = 0; i < this.slotToId.length; i++) {
+      const id = this.slotToId[i];
+      scheduledIncoming[i] = this.clampInteger(this.incomingChargeMap.get(id) ?? 0, 0, UINT32_MAX);
+    }
+
+    this.device.queue.writeBuffer(this.incomingChargeBuffers[this.incomingIndex], 0, scheduledIncoming);
+    this.device.queue.writeBuffer(this.incomingChargeBuffers[1 - this.incomingIndex], 0, new Uint32Array(this.capacity));
+
+    this.device.queue.writeBuffer(this.senderCountBuffers[0], 0, new Uint32Array([0]));
+    this.device.queue.writeBuffer(this.senderCountBuffers[1], 0, new Uint32Array([0]));
+
+    this.selectedTargetsBuffer &&
+      this.device.queue.writeBuffer(
+        this.selectedTargetsBuffer,
+        0,
+        new Uint32Array(Math.max(1, this.capacity * Math.max(1, this.maxK))),
+      );
+
+    // Intermediate buffers are overwritten by the next compute step. Keeping
+    // their last values is useful for diagnostics (e.g. q_out inspection).
+
+    // If a population was externally restored/reinitialized, preserve the CPU
+    // history; GPU event buffers are observability buffers and do not determine
+    // correctness of the next causal charge delivery.
+    this.eventIndex = 0;
+    this.stateIndex = 0;
   }
-  
-  private async createPipelines() {
-    // Create bind group layout
-    const bindGroupLayoutEntries: GPUBindGroupLayoutEntry[] = [];
-   
-    // Add entries for each buffer
-    // We'll add them in a specific order that must match the shader
-    const bufferNames = [
-      'positionBuffer', 'velocityBuffer', 'healthBuffer', 'chargeBuffer', 'roleBuffer',
-      'genomeHMaxBuffer', 'genomeThetaQBuffer', 'genomeABuffer', 'genomeKBuffer',
-      'genomeRcBuffer', 'genomeMBuffer', 'genomeGammaBuffer', 'genomeRsBuffer',
-      'genomeOmegaRBuffer', 'genomeOmegaABuffer', 'genomeOmegaVBuffer'
-    ];
-   
-    bufferNames.forEach((name, index) => {
-      bindGroupLayoutEntries.push({
-        binding: index,
-        visibility: 0x04, // GPUShaderStage.COMPUTE
-        buffer: { type: 'read-only-storage' },
-      });
-    });
-   
-    // Also add buffers for output (we'll need storage buffers for writing)
-    // For now, we'll use the same buffers for read-write (not ideal but simple)
-    // In a real implementation, we'd use double buffering
-    bufferNames.forEach((name, index) => {
-      bindGroupLayoutEntries.push({
-        binding: index + bufferNames.length,
-        visibility: 0x04, // GPUShaderStage.COMPUTE
-        buffer: { type: 'storage' },
-      });
-    });
-   
-    this.bindGroupLayout = this.device.createBindGroupLayout({
-      entries: bindGroupLayoutEntries,
-    });
-   
-    // Create bind group
-    const bindGroupEntries: GPUBindGroupEntry[] = [];
-    bufferNames.forEach((name, index) => {
-      const buffer = (this as { [key: string]: GPUBuffer | null })[name];
-      if (buffer) {
-        bindGroupEntries.push({
-          binding: index,
-          resource: { buffer },
-        });
-      }
-    });
-    bufferNames.forEach((name, index) => {
-      const buffer = (this as { [key: string]: GPUBuffer | null })[name];
-      if (buffer) {
-        bindGroupEntries.push({
-          binding: index + bufferNames.length,
-          resource: { buffer },
-        });
-      }
-    });
-   
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.bindGroupLayout!,
-      entries: bindGroupEntries,
-    });
-   
-    // Create compute pipeline
-    const shaderModule = this.device.createShaderModule({
-      code: `
-        // Simple pass-through shader for testing
-        @group(0) @binding(0) var<storage, read> positionIn: array<vec2<f32>>;
-        @group(0) @binding(1) var<storage, read> velocityIn: array<vec2<f32>>;
-        @group(0) @binding(2) var<storage, read> healthIn: array<f32>;
-        @group(0) @binding(3) var<storage, read> chargeIn: array<f32>;
-        @group(0) @binding(4) var<storage, read> roleIn: array<f32>;
-        @group(0) @binding(5) var<storage, read> genomeHMaxIn: array<f32>;
-        @group(0) @binding(6) var<storage, read> genomeThetaQIn: array<f32>;
-        @group(0) @binding(7) var<storage, read> genomeAIn: array<f32>;
-        @group(0) @binding(8) var<storage, read> genomeKIn: array<f32>;
-        @group(0) @binding(9) var<storage, read> genomeMIn: array<f32>;
-        @group(0) @binding(10) var<storage, read> genomeGammaIn: array<f32>;
-        @group(0) @binding(11) var<storage, read> genomeRsIn: array<f32>;
-        @group(0) @binding(12) var<storage, read> genomeOmegaRIn: array<f32>;
-        @group(0) @binding(13) var<storage, read> genomeOmegaAIn: array<f32>;
-        @group(0) @binding(14) var<storage, read> genomeOmegaVIn: array<f32>;
-        
-        @group(0) @binding(16) var<storage, read_write> positionOut: array<vec2<f32>>;
-        @group(0) @binding(17) var<storage, read_write> velocityOut: array<vec2<f32>>;
-        @group(0) @binding(18) var<storage, read_write> healthOut: array<f32>;
-        @group(0) @binding(19) var<storage, read_write> chargeOut: array<f32>;
-        @group(0) @binding(20) var<storage, read_write> roleOut: array<f32>;
-        @group(0) @binding(21) var<storage, read_write> genomeHMaxOut: array<f32>;
-        @group(0) @binding(22) var<storage, read_write> genomeThetaQOut: array<f32>;
-        @group(0) @binding(23) var<storage, read_write> genomeAOut: array<f32>;
-        @group(0) @binding(24) var<storage, read_write> genomeKOut: array<f32>;
-        @group(0) @binding(25) var<storage, read_write> genomeRcOut: array<f32>;
-        @group(0) @binding(26) var<storage, read_write> genomeMOut: array<f32>;
-        @group(0) @binding(27) var<storage, read_write> genomeGammaOut: array<f32>;
-        @group(0) @binding(28) var<storage, read_write> genomeRsOut: array<f32>;
-        @group(0) @binding(29) var<storage, read_write> genomeOmegaROut: array<f32>;
-        @group(0) @binding(30) var<storage, read_write> genomeOmegaAOut: array<f32>;
-        @group(0) @binding(31) var<storage, read_write> genomeOmegaVOut: array<f32>;
-        
-        @compute @workgroup_size(64)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-          let i = id.x;
-          let n = arrayLength(&positionIn);
-          if (i >= n) { return; }
-          
-          positionOut[i] = positionIn[i];
-          velocityOut[i] = velocityIn[i];
-          healthOut[i] = healthIn[i];
-          chargeOut[i] = chargeIn[i];
-          roleOut[i] = roleIn[i];
-          genomeHMaxOut[i] = genomeHMaxIn[i];
-          genomeThetaQOut[i] = genomeThetaQIn[i];
-          genomeAOut[i] = genomeAIn[i];
-          genomeKOut[i] = genomeKIn[i];
-          genomeRcOut[i] = genomeRcIn[i];
-          genomeMOut[i] = genomeMIn[i];
-          genomeGammaOut[i] = genomeGammaIn[i];
-          genomeRsOut[i] = genomeRsIn[i];
-          genomeOmegaROut[i] = genomeOmegaRIn[i];
-          genomeOmegaAOut[i] = genomeOmegaAIn[i];
-          genomeOmegaVOut[i] = genomeOmegaVIn[i];
-        }
-      `,
-    });
-   
-    this.pipeline = this.device.createComputePipeline({
-      layout: this.device.createPipelineLayout({
-        bindGroupLayouts: [this.bindGroupLayout!],
-      }),
+
+  private async resyncAfterPopulationStep(): Promise<void> {
+    const desiredCapacity = Math.max(1, this.config.Nmax, this.population.particles.size);
+    const desiredMaxK = this.computeRequiredMaxK();
+    const desiredGrid = this.computeGridSpec();
+    const needsShape =
+      desiredCapacity !== this.capacity ||
+      desiredMaxK !== this.maxK ||
+      desiredGrid.countX !== this.gridCountX ||
+      desiredGrid.countY !== this.gridCountY ||
+      Math.abs(desiredGrid.cellSize - this.gridCellSize) > 1e-12;
+
+    if (needsShape) {
+      await this.recreateGpuBuffers(false);
+      return;
+    }
+
+    await this.uploadPopulationToGpu();
+  }
+
+  private async createPipelines(): Promise<void> {
+    this.gridClearPipeline = this.makePipeline(
+      'mfm-grid-clear',
+      SHADER_GRID_CLEAR,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.gridBuildPipeline = this.makePipeline(
+      'mfm-grid-build',
+      SHADER_GRID_BUILD,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.chargeProcessPipeline = this.makePipeline(
+      'mfm-charge-process',
+      SHADER_CHARGE_PROCESS,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        ...this.readonlyBindings(1, 5),
+        ...this.storageBindings(6, 3),
+      ],
+    );
+
+    this.chargeFinalizePipeline = this.makePipeline(
+      'mfm-charge-finalize',
+      SHADER_CHARGE_FINALIZE,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.communicationSelectPipeline = this.makePipeline(
+      'mfm-communication-select',
+      SHADER_COMMUNICATION_SELECT,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        ...this.readonlyBindings(1, 12),
+        { binding: 13, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 14, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 15, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 16, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.communicationTransmitPipeline = this.makePipeline(
+      'mfm-communication-transmit',
+      SHADER_COMMUNICATION_TRANSMIT,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 4, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 5, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 6, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.localSuccessPipeline = this.makePipeline(
+      'mfm-local-success',
+      SHADER_LOCAL_SUCCESS,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 4, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.healthUpdatePipeline = this.makePipeline(
+      'mfm-health-update',
+      SHADER_HEALTH_UPDATE,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 4, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 5, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.forcePipeline = this.makePipeline(
+      'mfm-force',
+      SHADER_FORCE,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        ...this.readonlyBindings(1, 9),
+        { binding: 10, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        { binding: 11, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 12, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+      ],
+    );
+
+    this.mechanicsPipeline = this.makePipeline(
+      'mfm-mechanics',
+      SHADER_MECHANICS,
+      [
+        { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        ...this.readonlyBindings(1, 6),
+        ...this.storageBindings(7, 2),
+      ],
+    );
+  }
+
+  private makePipeline(
+    label: string,
+    code: string,
+    entries: GPUBindGroupLayoutEntry[],
+  ): PipelineBundle {
+    const layout = this.device.createBindGroupLayout({ entries, label: `${label}-layout` });
+    const module = this.device.createShaderModule({ code, label: `${label}-shader` });
+    const pipeline = this.device.createComputePipeline({
+      label,
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
       compute: {
-        module: shaderModule,
+        module,
         entryPoint: 'main',
       },
     });
+    return { pipeline, layout };
   }
-  
-  private async readBuffer(buffer: GPUBuffer): Promise<ArrayBuffer> {
-    if (buffer.size === 0) return new ArrayBuffer(0);
-    const stagingBuffer = this.device.createBuffer({
-      size: buffer.size,
-      usage: 0x05, // GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+
+  private readonlyBindings(start: number, count: number): GPUBindGroupLayoutEntry[] {
+    return Array.from({ length: count }, (_, i) => ({
+      binding: start + i,
+      visibility: SHADER_STAGE_COMPUTE,
+      buffer: { type: 'read-only-storage' } as const,
+    }));
+  }
+
+  private storageBindings(start: number, count: number): GPUBindGroupLayoutEntry[] {
+    return Array.from({ length: count }, (_, i) => ({
+      binding: start + i,
+      visibility: SHADER_STAGE_COMPUTE,
+      buffer: { type: 'storage' } as const,
+    }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Compute dispatch helpers / bind groups
+  // -------------------------------------------------------------------------
+
+  private dispatchCompute(
+    encoder: GPUCommandEncoder,
+    pipelineBundle: PipelineBundle,
+    bindGroup: GPUBindGroup,
+    dynamicOffset = 0,
+    workgroupCount = Math.ceil(this.particleCount / 64),
+  ): void {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipelineBundle.pipeline);
+    pass.setBindGroup(0, bindGroup, [dynamicOffset]);
+    pass.dispatchWorkgroups(workgroupCount);
+    pass.end();
+  }
+
+  private makeBindGroup(layout: GPUBindGroupLayout, resources: GPUBuffer[]): GPUBindGroup {
+    return this.device.createBindGroup({
+      layout,
+      entries: resources.map((buffer, binding) => ({
+        binding,
+        resource:
+        binding === 0
+          ? {
+              buffer,
+              offset: 0,
+              size: UNIFORM_BUFFER_SIZE,
+            }
+          : {
+              buffer,
+            },
+      })),
     });
-    const commandEncoder = this.device.createCommandEncoder();
-    commandEncoder.copyBufferToBuffer(buffer, 0, stagingBuffer, 0, buffer.size);
+  }
+
+  private createGridClearBindGroup(): GPUBindGroup {
+    return this.makeBindGroup(this.gridClearPipeline.layout, [
+      this.paramsBuffer,
+      this.cellHeadBuffer,
+    ]);
+  }
+
+  private createGridBuildBindGroup(stateRead: number): GPUBindGroup {
+    return this.makeBindGroup(this.gridBuildPipeline.layout, [
+      this.paramsBuffer,
+      this.positionBuffers[stateRead],
+      this.cellHeadBuffer,
+      this.particleNextBuffer,
+    ]);
+  }
+
+  private createChargeProcessBindGroup(stateRead: number, incomingRead: number): GPUBindGroup {
+    return this.makeBindGroup(this.chargeProcessPipeline.layout, [
+      this.paramsBuffer,
+      this.chargeBuffers[stateRead],
+      this.incomingChargeBuffers[incomingRead],
+      this.roleBuffer,
+      this.genomeThetaQBuffer,
+      this.genomeABuffer,
+      this.qResidualBuffer,
+      this.activeBuffer,
+      this.qOutBuffer,
+    ]);
+  }
+
+  private createChargeFinalizeBindGroup(stateWrite: number): GPUBindGroup {
+    return this.makeBindGroup(this.chargeFinalizePipeline.layout, [
+      this.paramsBuffer,
+      this.qResidualBuffer,
+      this.chargeBuffers[stateWrite],
+    ]);
+  }
+
+  private createCommunicationSelectBindGroup(stateRead: number): GPUBindGroup {
+    return this.makeBindGroup(this.communicationSelectPipeline.layout, [
+      this.paramsBuffer,
+      this.positionBuffers[stateRead],
+      this.velocityBuffers[stateRead],
+      this.roleBuffer,
+      this.particleIdHashBuffer,
+      this.genomeRsBuffer,
+      this.genomeABuffer,
+      this.genomeRcBuffer,
+      this.genomeKBuffer,
+      this.genomeOmegaRBuffer,
+      this.genomeOmegaABuffer,
+      this.genomeOmegaVBuffer,
+      this.activeBuffer,
+      this.cellHeadBuffer,
+      this.particleNextBuffer,
+      this.selectedTargetsBuffer,
+      this.selectedCountBuffer,
+    ]);
+  }
+
+  private createCommunicationTransmitBindGroup(
+    stateRead: number,
+    incomingWrite: number,
+    eventWrite: number,
+  ): GPUBindGroup {
+    return this.makeBindGroup(this.communicationTransmitPipeline.layout, [
+      this.paramsBuffer,
+      this.qOutBuffer,
+      this.selectedTargetsBuffer,
+      this.incomingChargeBuffers[incomingWrite],
+      this.senderCountBuffers[eventWrite],
+      this.senderBuffers[eventWrite],
+      this.targetBuffers[eventWrite],
+    ]);
+  }
+
+  private createLocalSuccessBindGroup(incomingRead: number): GPUBindGroup {
+    return this.makeBindGroup(this.localSuccessPipeline.layout, [
+      this.paramsBuffer,
+      this.incomingChargeBuffers[incomingRead],
+      this.activeBuffer,
+      this.selectedCountBuffer,
+      this.successfulBuffer,
+    ]);
+  }
+
+  private createHealthUpdateBindGroup(stateRead: number, stateWrite: number): GPUBindGroup {
+    return this.makeBindGroup(this.healthUpdatePipeline.layout, [
+      this.paramsBuffer,
+      this.healthBuffers[stateRead],
+      this.roleBuffer,
+      this.genomeHMaxBuffer,
+      this.successfulBuffer,
+      this.healthBuffers[stateWrite],
+    ]);
+  }
+
+  private createForceBindGroup(stateRead: number): GPUBindGroup {
+    return this.makeBindGroup(this.forcePipeline.layout, [
+      this.paramsBuffer,
+      this.positionBuffers[stateRead],
+      this.velocityBuffers[stateRead],
+      this.chargeBuffers[stateRead],
+      this.roleBuffer,
+      this.genomeRsBuffer,
+      this.genomeABuffer,
+      this.genomeOmegaRBuffer,
+      this.genomeOmegaABuffer,
+      this.genomeOmegaVBuffer,
+      this.genomeGammaBuffer,
+      this.genomeMBuffer,
+      this.forceBuffer,
+    ]);
+  }
+
+  private createMechanicsBindGroup(stateRead: number, stateWrite: number): GPUBindGroup {
+    return this.makeBindGroup(this.mechanicsPipeline.layout, [
+      this.paramsBuffer,
+      this.positionBuffers[stateRead],
+      this.velocityBuffers[stateRead],
+      this.forceBuffer,
+      this.roleBuffer,
+      this.genomeMBuffer,
+      this.genomeGammaBuffer,
+      this.positionBuffers[stateWrite],
+      this.velocityBuffers[stateWrite],
+    ]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Readback / CPU population update
+  // -------------------------------------------------------------------------
+
+  private async readbackResults(): Promise<Readback> {
+    const commandEncoder = this.device.createCommandEncoder({ label: `mfm-readback-${this.timestep}` });
+
+    const stateBytes = this.particleCount * 4;
+    commandEncoder.copyBufferToBuffer(this.positionBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingPositions, 0, this.particleCount * 8);
+    commandEncoder.copyBufferToBuffer(this.velocityBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingVelocities, 0, this.particleCount * 8);
+    commandEncoder.copyBufferToBuffer(this.healthBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingHealths, 0, stateBytes);
+    commandEncoder.copyBufferToBuffer(this.chargeBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingCharges, 0, stateBytes);
+    commandEncoder.copyBufferToBuffer(this.qOutBuffer, 0, this.stagingQOut, 0, stateBytes);
+    commandEncoder.copyBufferToBuffer(this.activeBuffer, 0, this.stagingActive, 0, stateBytes);
+    commandEncoder.copyBufferToBuffer(this.successfulBuffer, 0, this.stagingSuccessful, 0, stateBytes);
+    commandEncoder.copyBufferToBuffer(this.selectedCountBuffer, 0, this.stagingSelectedCounts, 0, stateBytes);
+    if (this.maxK > 0) {
+      commandEncoder.copyBufferToBuffer(
+        this.selectedTargetsBuffer,
+        0,
+        this.stagingSelectedTargets,
+        0,
+        this.particleCount * this.maxK * 4,
+      );
+    }
+
     this.device.queue.submit([commandEncoder.finish()]);
     await this.device.queue.onSubmittedWorkDone();
-    await stagingBuffer.mapAsync(0x0001); // GPUMapMode.READ
-    const data = stagingBuffer.getMappedRange();
-    const result = data.slice(0); // Copy the data
-    stagingBuffer.unmap();
-    stagingBuffer.destroy();
-    return result;
+
+    const positions = await this.mapFloat32(this.stagingPositions, this.particleCount * 2);
+    const velocities = await this.mapFloat32(this.stagingVelocities, this.particleCount * 2);
+    const healths = await this.mapFloat32(this.stagingHealths, this.particleCount);
+    const charges = await this.mapUint32(this.stagingCharges, this.particleCount);
+    const qOut = await this.mapUint32(this.stagingQOut, this.particleCount);
+    const active = await this.mapUint32(this.stagingActive, this.particleCount);
+    const successful = await this.mapUint32(this.stagingSuccessful, this.particleCount);
+    const selectedCounts = await this.mapUint32(this.stagingSelectedCounts, this.particleCount);
+    const selectedTargets = this.maxK > 0
+      ? await this.mapUint32(this.stagingSelectedTargets, this.particleCount * this.maxK)
+      : new Uint32Array(0);
+
+    return {
+      positions,
+      velocities,
+      healths,
+      charges,
+      qOut,
+      active,
+      successful,
+      selectedTargets,
+      selectedCounts,
+    };
   }
-  
-  async step(): Promise<PopulationState> {
-    if (!this.pipeline || !this.bindGroup || this.particleCount === 0) {
-      return this.population;
+
+  private async mapFloat32(buffer: GPUBuffer, length: number): Promise<Float32Array> {
+    await buffer.mapAsync(MAP_MODE_READ);
+    try {
+      const data = new Float32Array(buffer.getMappedRange().slice(0));
+      return data.slice(0, length);
+    } finally {
+      buffer.unmap();
     }
-   
-    // Create command encoder
-    const commandEncoder = this.device.createCommandEncoder();
-   
-    // Begin compute pass
-    const passEncoder = commandEncoder.beginComputePass();
-    passEncoder.setPipeline(this.pipeline);
-    passEncoder.setBindGroup(0, this.bindGroup);
-   
-    // Dispatch workgroups
-    const workgroupSize = 64;
-    const workgroupCount = Math.ceil(this.particleCount / workgroupSize);
-    passEncoder.dispatchWorkgroups(workgroupCount);
-   
-    passEncoder.end();
-   
-    // Submit commands
-    const commandBuffer = commandEncoder.finish();
-    this.device.queue.submit([commandBuffer]);
-   
-    // Wait for GPU to complete (for simplicity)
-    // In a real implementation, we might want to use fences or overlap with rendering
-    await this.device.queue.onSubmittedWorkDone();
-   
-    // Read back the output data from the GPU buffers (the second set of bindings)
-    // We'll read from the output buffers (bindings 16-31) and update the population
-    if (this.particleCount > 0) {
-      // Read position output
-      if (this.positionBuffer) {
-        const positionBuffer = await this.readBuffer(this.positionBuffer);
-        const positions = new Float32Array(positionBuffer);
-        // Update population with new positions
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          state.position.x = positions[i * 2];
-          state.position.y = positions[i * 2 + 1];
-          i++;
+  }
+
+  private async mapUint32(buffer: GPUBuffer, length: number): Promise<Uint32Array> {
+    await buffer.mapAsync(MAP_MODE_READ);
+    try {
+      const data = new Uint32Array(buffer.getMappedRange().slice(0));
+      return data.slice(0, length);
+    } finally {
+      buffer.unmap();
+    }
+  }
+
+  private addOffspring(
+    snapshot: Snapshot[],
+    nextStates: Map<string, ParticleState>,
+    nextGenomes: Map<string, Genome>,
+    events: Map<string, StepEvent>,
+  ): void {
+    if (this.config.mating_probability <= 0 || nextStates.size >= this.config.Nmax) return;
+
+    const candidates = snapshot.filter((item) =>
+      item.state.role === 'internal' &&
+      nextStates.has(item.id) &&
+      item.state.health >= item.genome.H_max * this.config.mate_health_percent &&
+      events.get(item.id)?.success,
+    );
+
+    const matingRadius = this.config.R_mate * (this.config.mate_radius_percent / 100);
+
+    for (let i = 0; i < candidates.length && nextStates.size < this.config.Nmax; i++) {
+      for (let j = i + 1; j < candidates.length && nextStates.size < this.config.Nmax; j++) {
+        const first = candidates[i];
+        const second = candidates[j];
+
+        if (
+          this.periodicDistance(first.state.position, second.state.position) > matingRadius ||
+          this.rng.nextFloat() >= this.config.mating_probability
+        ) {
+          continue;
         }
-      }
-     
-      // Read velocity output
-      if (this.velocityBuffer) {
-        const velocityBuffer = await this.readBuffer(this.velocityBuffer);
-        const velocities = new Float32Array(velocityBuffer);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          state.velocity.x = velocities[i * 2];
-          state.velocity.y = velocities[i * 2 + 1];
-          i++;
-        }
-      }
-     
-      // Read health output
-      if (this.healthBuffer) {
-        const healthBuffer = await this.readBuffer(this.healthBuffer);
-        const healths = new Float32Array(healthBuffer);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          state.health = healths[i];
-          i++;
-        }
-      }
-     
-      // Read charge output
-      if (this.chargeBuffer) {
-        const chargeBuffer = await this.readBuffer(this.chargeBuffer);
-        const charges = new Float32Array(chargeBuffer);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          state.charge = charges[i];
-          i++;
-        }
-      }
-     
-      // Read role output
-      if (this.roleBuffer) {
-        const roleBuffer = await this.readBuffer(this.roleBuffer);
-        const roles = new Float32Array(roleBuffer);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const roleValue = roles[i];
-          state.role = roleValue === 0 ? 'internal' : roleValue === 1 ? 'input' : 'output';
-          i++;
-        }
-      }
-     
-      // Read genome outputs
-      if (this.genomeHMaxBuffer) {
-        const genomeHMax = await this.readBuffer(this.genomeHMaxBuffer);
-        const genomeHMaxArr = new Float32Array(genomeHMax);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genomeHMaxArr[i],
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: genome.gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeThetaQBuffer) {
-        const genomeThetaQ = await this.readBuffer(this.genomeThetaQBuffer);
-        const genomeThetaQArr = new Float32Array(genomeThetaQ);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genomeThetaQArr[i],
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: genome.gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeABuffer) {
-        const genomeA = await this.readBuffer(this.genomeABuffer);
-        const genomeAArr = new Float32Array(genomeA);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genomeAArr[i],
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: genome.gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeKBuffer) {
-        const genomeK = await this.readBuffer(this.genomeKBuffer);
-        const genomeKArr = new Float32Array(genomeK);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: genome.gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeRcBuffer) {
-        const genomeRc = await this.readBuffer(this.genomeRcBuffer);
-        const genomeRcArr = new Float32Array(genomeRc);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeMBuffer) {
-        const genomeM = await this.readBuffer(this.genomeMBuffer);
-        const genomeMArr = new Float32Array(genomeM);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genomeMArr[i],
-              gamma: genome.gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeGammaBuffer) {
-        const genomeGamma = await this.readBuffer(this.genomeGammaBuffer);
-        const genomeGammaArr = new Float32Array(genomeGamma);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: genomeGammaArr[i],
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeRsBuffer) {
-        const genomeRs = await this.readBuffer(this.genomeRsBuffer);
-        const genomeRsArr = new Float32Array(genomeRs);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: gamma,
-              R_s: genomeRsArr[i],
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeOmegaRBuffer) {
-        const genomeOmegaR = await this.readBuffer(this.genomeOmegaRBuffer);
-        const genomeOmegaRArr = new Float32Array(genomeOmegaR);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: gamma,
-              R_s: genome.R_s,
-              omega_R: genomeOmegaRArr[i],
-              omega_A: genome.omega_A,
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeOmegaABuffer) {
-        const genomeOmegaA = await this.readBuffer(this.genomeOmegaABuffer);
-        const genomeOmegaAArr = new Float32Array(genomeOmegaA);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genomeOmegaAArr[i],
-              omega_v: genome.omega_v,
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
-      }
-      if (this.genomeOmegaVBuffer) {
-        const genomeOmegaV = await this.readBuffer(this.genomeOmegaVBuffer);
-        const genomeOmegaVArr = new Float32Array(genomeOmegaV);
-        let i = 0;
-        for (const entry of this.population.particles) {
-          const [id, state] = entry;
-          const genome = this.population.genomes.get(id);
-          if (genome) {
-            const newGenome = {
-              ...genome,
-              H_max: genome.H_max,
-              theta_q: genome.theta_q,
-              A: genome.A,
-              K: genome.K,
-              R_c: genome.R_c,
-              m: genome.m,
-              gamma: gamma,
-              R_s: genome.R_s,
-              omega_R: genome.omega_R,
-              omega_A: genome.omega_A,
-              omega_v: genomeOmegaVArr[i],
-            };
-            this.population.genomes.set(id, newGenome);
-          }
-          i++;
-        }
+
+        const id = `offspring-${this.timestep}-${nextStates.size}`;
+        const childGenome = first.genome.crossover(second.genome, this.rng).mutate(this.rng);
+
+        const baseX = (first.state.position.x + second.state.position.x) / 2;
+        const baseY = (first.state.position.y + second.state.position.y) / 2;
+        const position = this.wrap({
+          x: baseX + (this.rng.nextFloat() - 0.5) * 2 * this.config.Lx * 0.01,
+          y: baseY + (this.rng.nextFloat() - 0.5) * 2 * this.config.Ly * 0.01,
+        });
+
+        const velocity = {
+          x: (first.state.velocity.x + second.state.velocity.x) / 2 + (this.rng.nextFloat() - 0.5) * 2 * 0.01,
+          y: (first.state.velocity.y + second.state.velocity.y) / 2 + (this.rng.nextFloat() - 0.5) * 2 * 0.01,
+        };
+
+        nextGenomes.set(id, childGenome);
+        nextStates.set(
+          id,
+          new ParticleState({
+            version: first.state.version,
+            position,
+            velocity,
+            health: childGenome.H_max * this.config.birth_health_percent,
+            charge: 0,
+            senderSet: new Set(),
+            prevSenderSet: new Set(),
+            role: 'internal',
+          }),
+        );
       }
     }
-   
-    // Increment timestep
-    this.timestep++;
-   
-    // Return the updated population
-    return this.population;
   }
-  
-  getPopulation(): PopulationState {
-    return this.population;
+
+  // -------------------------------------------------------------------------
+  // CPU reference helpers
+  // -------------------------------------------------------------------------
+
+  private takeSnapshot(): Snapshot[] {
+    const snapshot: Snapshot[] = [];
+    for (const [id, state] of this.population.particles) {
+      const genome = this.population.genomes.get(id);
+      if (genome) snapshot.push({ id, state, genome });
+    }
+    return snapshot;
   }
-  
-  getConfig(): MFMConfig {
-    return this.config;
+
+  private computePressure(snapshot: Snapshot[]): number {
+    const outputs = snapshot.filter((item) => item.state.role === 'output');
+    const outputCharge = outputs.reduce((sum, item) => sum + item.state.charge, 0);
+    const error = this.pendingError ?? (
+      outputs.length === 0
+        ? 0
+        : 1 - Math.min(1, outputCharge / (outputs.length * this.config.Qmax))
+    );
+
+    this.pendingError = null;
+    return this.config.P_min +
+      (this.config.P_max - this.config.P_min) * Math.pow(error, this.config.pressure_gamma);
   }
-  
-  setConfig(config: MFMConfig): void {
-    this.config = config;
+
+  private findInputSlot(snapshot: Snapshot[]): number {
+    const explicit = snapshot.findIndex((item) => item.state.role === 'input');
+    return explicit >= 0 ? explicit : 0;
   }
-  
-  setPopulation(population: PopulationState): void {
-    this.population = population;
+
+  private refreshCpuSlotMapping(): void {
+    this.slotToId = [];
+    this.idToSlot.clear();
+
+    for (const [id] of this.population.particles) {
+      this.idToSlot.set(id, this.slotToId.length);
+      this.slotToId.push(id);
+    }
+
+    this.particleCount = this.slotToId.length;
   }
-  
-  injectInput(value: number): void {
-    // TODO: Implement input injection
+
+  private ensurePopulationFitsCapacity(): void {
+    if (this.population.particles.size > Math.max(1, this.config.Nmax)) {
+      throw new Error(
+        `Population size ${this.population.particles.size} exceeds MFM Nmax ${this.config.Nmax}`,
+      );
+    }
   }
-  
-  setGlobalError(error: number): void {
-    // TODO: Implement global error setting
+
+  private computeRequiredMaxK(): number {
+    let maxK = 0;
+    for (const [id] of this.population.particles) {
+      const genome = this.population.genomes.get(id);
+      if (genome) maxK = Math.max(maxK, Math.max(0, Math.floor(genome.K)));
+    }
+    return maxK;
   }
-  
-  async saveState(): Promise<Record<string, unknown>> {
-    // TODO: Implement state saving
-    return {};
+
+  private computeGridSpec(): { countX: number; countY: number; cellSize: number } {
+    let maxRc = 0;
+    for (const [id] of this.population.particles) {
+      const genome = this.population.genomes.get(id);
+      if (genome) maxRc = Math.max(maxRc, Math.max(0, genome.R_c));
+    }
+
+    const maxInteractionRange = Math.max(maxRc, this.config.R_s_max, EPSILON);
+    const area = this.config.Lx * this.config.Ly;
+    const minimumCellSizeForBudget = Math.sqrt(area / MAX_GRID_CELLS);
+    const cellSize = Math.max(maxInteractionRange, minimumCellSizeForBudget);
+    const countX = Math.max(1, Math.ceil(this.config.Lx / cellSize));
+    const countY = Math.max(1, Math.ceil(this.config.Ly / cellSize));
+    return { countX, countY, cellSize };
   }
-  
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async loadState(_state: Record<string, unknown>): void {
-    // TODO: Implement state loading
+
+  private validateConfiguration(): void {
+    const c = this.config;
+    const invalid = (name: string, value: unknown) => {
+      throw new Error(`Invalid MFM/WebGPU configuration: ${name}=${String(value)}`);
+    };
+
+    if (!(c.Nmax >= 1)) invalid('Nmax', c.Nmax);
+    if (!(c.Qmax > 0)) invalid('Qmax', c.Qmax);
+    if (!(c.Q_in_max >= 0)) invalid('Q_in_max', c.Q_in_max);
+    if (!(c.Lx > 0)) invalid('Lx', c.Lx);
+    if (!(c.Ly > 0)) invalid('Ly', c.Ly);
+    if (!(c.dt >= 0)) invalid('dt', c.dt);
+    if (!(c.R_s_min >= 0 && c.R_s_max >= c.R_s_min && c.R_s_max > 0)) invalid('R_s_min/R_s_max', `${c.R_s_min}/${c.R_s_max}`);
+
+    const maxK = this.computeRequiredMaxK();
+    if (maxK > 0x7fffffff) invalid('K', maxK);
+    if ((maxK + 1) * UNIFORM_DYNAMIC_STRIDE > 65536) invalid('K', `${maxK} exceeds dynamic uniform-buffer capacity`);
+
+    // Prevent the GPU integer charge representation from overflowing in normal
+    // configured operation. The model cap itself remains Qmax.
+    if (c.Qmax > UINT32_MAX) invalid('Qmax', c.Qmax);
+    if (c.Q_in_max > UINT32_MAX) invalid('Q_in_max', c.Q_in_max);
+    if (c.delta_q < 0 || c.delta_q > UINT32_MAX) invalid('delta_q', c.delta_q);
+  }
+
+  private writeParams(
+    dynamicOffset: number,
+    args: {
+      inputSignal: number;
+      inputSlot: number;
+      globalPressure: number;
+      rank: number;
+    },
+  ): void {
+    const data = new ArrayBuffer(UNIFORM_BUFFER_SIZE);
+    const view = new DataView(data);
+
+    view.setUint32(0, this.particleCount, true);
+    view.setUint32(4, this.capacity, true);
+    view.setUint32(8, this.maxK, true);
+    view.setUint32(12, args.rank >>> 0, true);
+    view.setUint32(16, this.timestep >>> 0, true);
+    view.setUint32(20, this.seed, true);
+    view.setUint32(24, this.clampInteger(this.config.Qmax, 0, UINT32_MAX), true);
+    view.setUint32(28, this.clampInteger(this.config.Q_in_max, 0, UINT32_MAX), true);
+    view.setUint32(32, this.clampInteger(this.config.delta_q, 0, UINT32_MAX), true);
+    view.setFloat32(36, args.inputSignal, true);
+    view.setFloat32(40, args.globalPressure, true);
+    view.setFloat32(44, this.config.Lx, true);
+    view.setFloat32(48, this.config.Ly, true);
+    view.setFloat32(52, this.config.R_s_min, true);
+    view.setFloat32(56, this.config.R_s_max, true);
+    view.setFloat32(60, this.config.communication_alpha, true);
+    view.setFloat32(64, this.config.dt, true);
+    view.setFloat32(68, EPSILON, true);
+    view.setFloat32(72, this.config.beta, true);
+    view.setFloat32(76, this.config.lambda, true);
+    view.setUint32(80, Math.max(0, args.inputSlot) >>> 0, true);
+    view.setUint32(84, this.gridCountX >>> 0, true);
+    view.setUint32(88, this.gridCountY >>> 0, true);
+    view.setFloat32(92, this.gridCellSize, true);
+
+    this.device.queue.writeBuffer(this.paramsBuffer, dynamicOffset, data);
+  }
+
+  private encodeRole(role: ParticleState['role']): number {
+    if (role === 'input') return ROLE_INPUT;
+    if (role === 'output') return ROLE_OUTPUT;
+    return ROLE_INTERNAL;
+  }
+
+  private hashParticleId(id: string): number {
+    // FNV-1a gives a stable identity-derived 32-bit token without making the
+    // logical string ID equivalent to the physical slot index.
+    let hash = 2166136261 >>> 0;
+    for (let i = 0; i < id.length; i++) {
+      hash ^= id.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash >>> 0;
+  }
+
+  private clampInteger(value: number, min: number, max: number): number {
+    if (!Number.isFinite(value)) return min;
+    return Math.min(max, Math.max(min, Math.round(value))) >>> 0;
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private periodicDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    const dx = this.periodicDeltaComponent(b.x - a.x, this.config.Lx);
+    const dy = this.periodicDeltaComponent(b.y - a.y, this.config.Ly);
+    return Math.hypot(dx, dy);
+  }
+
+  private periodicDeltaComponent(delta: number, size: number): number {
+    return delta - size * Math.round(delta / size);
+  }
+
+  private wrap(v: { x: number; y: number }): { x: number; y: number } {
+    return {
+      x: v.x - Math.floor(v.x / this.config.Lx) * this.config.Lx,
+      y: v.y - Math.floor(v.y / this.config.Ly) * this.config.Ly,
+    };
   }
 }
-export type WebGPUMFMConfig = {
-  Lx: number;
-  Ly: number;
-  Nmax: number;
+
+// ---------------------------------------------------------------------------
+// WGSL shaders
+// ---------------------------------------------------------------------------
+
+const COMMON = /* wgsl */ `
+struct Params {
+  activeCount: u32,
+  capacity: u32,
+  maxK: u32,
+  rank: u32,
+  timestep: u32,
+  seed: u32,
+  qmax: u32,
+  qinMax: u32,
+  deltaQ: u32,
+  inputSignal: f32,
+  globalPressure: f32,
+  lx: f32,
+  ly: f32,
+  rsMin: f32,
+  rsMax: f32,
+  communicationAlpha: f32,
+  dt: f32,
+  epsilon: f32,
+  beta: f32,
+  lambda: f32,
+  inputSlot: u32,
+  gridCountX: u32,
+  gridCountY: u32,
+  gridCellSize: f32,
 };
+
+@group(0) @binding(0) var<uniform> params: Params;
+
+fn jsRound(x: f32) -> f32 {
+  return floor(x + 0.5);
+}
+
+fn torusDelta(delta: f32, extent: f32) -> f32 {
+  return delta - extent * jsRound(delta / extent);
+}
+
+fn wrapCoordinate(x: f32, extent: f32) -> f32 {
+  return x - floor(x / extent) * extent;
+}
+
+fn periodicDelta(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    torusDelta(b.x - a.x, params.lx),
+    torusDelta(b.y - a.y, params.ly),
+  );
+}
+
+fn feature(value: f32, scale: f32) -> f32 {
+  return clamp(value / scale, 0.0, 1.0);
+}
+
+fn mixHash(x0: u32) -> u32 {
+  var x = x0;
+  x ^= x >> 16u;
+  x *= 0x7feb352du;
+  x ^= x >> 15u;
+  x *= 0x846ca68bu;
+  x ^= x >> 16u;
+  return x;
+}
+
+fn random01(idHash: u32, rank: u32) -> f32 {
+  let seed = params.seed ^ idHash ^ (params.timestep * 0x9e3779b9u) ^ (rank * 0x85ebca6bu);
+  return f32(mixHash(seed) & 0x00ffffffu) / 16777216.0;
+}
+`;
+
+const SHADER_GRID_CLEAR = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read_write> cellHead: array<atomic<u32>>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let cell = gid.x;
+  let cellCount = params.gridCountX * params.gridCountY;
+  if (cell >= cellCount) { return; }
+  atomicStore(&cellHead[cell], 0xffffffffu);
+}
+`;
+
+const SHADER_GRID_BUILD = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> cellHead: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> particleNext: array<u32>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  let px = wrapCoordinate(positions[i].x, params.lx);
+  let py = wrapCoordinate(positions[i].y, params.ly);
+
+  let cx = min(u32(floor(px / params.gridCellSize)), params.gridCountX - 1u);
+  let cy = min(u32(floor(py / params.gridCellSize)), params.gridCountY - 1u);
+  let cell = cy * params.gridCountX + cx;
+
+  let oldHead = atomicExchange(&cellHead[cell], i);
+  particleNext[i] = oldHead;
+}
+`;
+
+const SHADER_CHARGE_PROCESS = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> chargeIn: array<u32>;
+@group(0) @binding(2) var<storage, read> incomingCharge: array<u32>;
+@group(0) @binding(3) var<storage, read> role: array<u32>;
+@group(0) @binding(4) var<storage, read> thetaQ: array<u32>;
+@group(0) @binding(5) var<storage, read> amplification: array<f32>;
+@group(0) @binding(6) var<storage, read_write> qResidual: array<u32>;
+@group(0) @binding(7) var<storage, read_write> activeFlags: array<u32>;
+@group(0) @binding(8) var<storage, read_write> qOut: array<u32>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  let inputCharge = select(0u, min(params.qinMax, u32(jsRound(f32(params.qinMax) * params.inputSignal))), i == params.inputSlot);
+
+  // Saturating intermediate addition prevents u32 wrap-around before the
+  // mathematical hard charge cap is applied in the next pass.
+  var qPre = chargeIn[i];
+  let r = incomingCharge[i];
+  if (qPre > 0xffffffffu - r) {
+    qPre = 0xffffffffu;
+  } else {
+    qPre += r;
+  }
+  if (qPre > 0xffffffffu - inputCharge) {
+    qPre = 0xffffffffu;
+  } else {
+    qPre += inputCharge;
+  }
+
+  let theta = thetaQ[i];
+  let isActive = qPre >= theta;
+  activeFlags[i] = select(0u, 1u, isActive);
+
+  let produced = select(0.0, jsRound(amplification[i] * f32(theta)), isActive);
+  qOut[i] = u32(clamp(produced, 0.0, 4294967295.0));
+
+  qResidual[i] = qPre - select(0u, theta, isActive);
+}
+`;
+
+const SHADER_CHARGE_FINALIZE = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> qResidual: array<u32>;
+@group(0) @binding(2) var<storage, read_write> chargeOut: array<u32>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  let residual = qResidual[i];
+  let postDecay = select(0u, residual - min(residual, params.deltaQ), residual > 0u);
+  chargeOut[i] = min(params.qmax, postDecay);
+}
+`;
+
+const SHADER_COMMUNICATION_SELECT = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> role: array<u32>;
+@group(0) @binding(4) var<storage, read> idHash: array<u32>;
+@group(0) @binding(5) var<storage, read> targetRs: array<f32>;
+@group(0) @binding(6) var<storage, read> targetA: array<f32>;
+@group(0) @binding(7) var<storage, read> sourceRc: array<f32>;
+@group(0) @binding(8) var<storage, read> sourceK: array<u32>;
+@group(0) @binding(9) var<storage, read> omegaR: array<f32>;
+@group(0) @binding(10) var<storage, read> omegaA: array<f32>;
+@group(0) @binding(11) var<storage, read> omegaV: array<f32>;
+@group(0) @binding(12) var<storage, read> activeFlags: array<u32>;
+@group(0) @binding(13) var<storage, read_write> cellHead: array<atomic<u32>>;
+@group(0) @binding(14) var<storage, read> particleNext: array<u32>;
+@group(0) @binding(15) var<storage, read_write> selectedTargets: array<u32>;
+@group(0) @binding(16) var<storage, read_write> selectedCount: array<u32>;
+
+fn score(source: u32, targetIndex: u32) -> f32 {
+  return omegaR[source] * feature(targetRs[targetIndex], params.rsMax)
+    + omegaA[source] * feature(targetA[targetIndex], 10.0)
+    + omegaV[source] * feature(length(velocities[targetIndex]), 10.0);
+}
+
+fn isSelected(source: u32, targetIndex: u32) -> bool {
+  let base = source * params.maxK;
+  for (var r = 0u; r < params.rank; r++) {
+    if (selectedTargets[base + r] == targetIndex) { return true; }
+  }
+  return false;
+}
+
+fn wrappedCell(c: i32, count: u32) -> u32 {
+  let m = i32(count);
+  var x = c % m;
+  if (x < 0) { x += m; }
+  return u32(x);
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount || params.maxK == 0u) { return; }
+
+  let writeIndex = i * params.maxK + params.rank;
+  selectedTargets[writeIndex] = 0xffffffffu;
+
+  if (activeFlags[i] == 0u || role[i] == 2u || params.rank >= sourceK[i]) { return; }
+
+  let cx = i32(min(u32(floor(positions[i].x / params.gridCellSize)), params.gridCountX - 1u));
+  let cy = i32(min(u32(floor(positions[i].y / params.gridCellSize)), params.gridCountY - 1u));
+
+  var maxScore = 0.0;
+  for (var oy = -1; oy <= 1; oy++) {
+    if (params.gridCountY == 1u && oy != 0) { continue; }
+    if (params.gridCountY == 2u && oy == 1) { continue; }
+    for (var ox = -1; ox <= 1; ox++) {
+      if (params.gridCountX == 1u && ox != 0) { continue; }
+      if (params.gridCountX == 2u && ox == 1) { continue; }
+
+      let nx = wrappedCell(cx + ox, params.gridCountX);
+      let ny = wrappedCell(cy + oy, params.gridCountY);
+      let cell = ny * params.gridCountX + nx;
+      
+      var j = atomicLoad(&cellHead[cell]);
+
+      for (var hop = 0u; hop < params.activeCount; hop++) {
+        if (j == 0xffffffffu) {
+            break;
+        }
+        if (j >= params.activeCount) {
+            break;
+        }
+
+        if (j != i && !isSelected(i, j)) {
+          let delta = periodicDelta(positions[i], positions[j]);
+          let d = length(delta);
+          if (d <= sourceRc[i]) {
+            maxScore = max(maxScore, score(i, j));
+          }
+        }
+
+        let next = particleNext[j];
+        if (next == j) {
+            break;
+        }
+        j = next;
+      }
+    }
+  }
+
+  var totalWeight = 0.0;
+  for (var oy = -1; oy <= 1; oy++) {
+    if (params.gridCountY == 1u && oy != 0) { continue; }
+    if (params.gridCountY == 2u && oy == 1) { continue; }
+    for (var ox = -1; ox <= 1; ox++) {
+      if (params.gridCountX == 1u && ox != 0) { continue; }
+      if (params.gridCountX == 2u && ox == 1) { continue; }
+
+      let nx = wrappedCell(cx + ox, params.gridCountX);
+      let ny = wrappedCell(cy + oy, params.gridCountY);
+      let cell = ny * params.gridCountX + nx;
+      var j = atomicLoad(&cellHead[cell]);
+
+      for (var hop = 0u; hop < params.activeCount; hop++) {
+        if (j == 0xffffffffu) {
+            break;
+        }
+        if (j >= params.activeCount) {
+            break;
+        }
+
+        if (j != i && !isSelected(i, j)) {
+          let delta = periodicDelta(positions[i], positions[j]);
+          let d = length(delta);
+          if (d <= sourceRc[i]) {
+            totalWeight += exp(params.communicationAlpha * (score(i, j) - maxScore));
+          }
+        }
+
+        let next = particleNext[j];
+        if (next == j) {
+            break;
+        }
+        j = next;
+      }
+    }
+  }
+
+  if (!(totalWeight > 0.0)) { return; }
+
+  let sample = random01(idHash[i], params.rank) * totalWeight;
+  var cumulative = 0.0;
+  var chosen = 0xffffffffu;
+
+  for (var oy = -1; oy <= 1; oy++) {
+    if (params.gridCountY == 1u && oy != 0) { continue; }
+    if (params.gridCountY == 2u && oy == 1) { continue; }
+    for (var ox = -1; ox <= 1; ox++) {
+      if (params.gridCountX == 1u && ox != 0) { continue; }
+      if (params.gridCountX == 2u && ox == 1) { continue; }
+
+      let nx = wrappedCell(cx + ox, params.gridCountX);
+      let ny = wrappedCell(cy + oy, params.gridCountY);
+      let cell = ny * params.gridCountX + nx;
+      var j = atomicLoad(&cellHead[cell]);
+
+      for (var hop = 0u; hop < params.activeCount; hop++) {
+        if (j == 0xffffffffu) {
+            break;
+        }
+        if (j >= params.activeCount) {
+            break;
+        }
+
+        if (j != i && !isSelected(i, j)) {
+          let delta = periodicDelta(positions[i], positions[j]);
+          let d = length(delta);
+          if (d <= sourceRc[i]) {
+            let weight = exp(params.communicationAlpha * (score(i, j) - maxScore));
+            cumulative += weight;
+            if (sample < cumulative) {
+              chosen = j;
+              break;
+            }
+          }
+        }
+
+        let next = particleNext[j];
+        if (next == j) {
+            break;
+        }
+        j = next;
+      }
+      if (chosen != 0xffffffffu) { break; }
+    }
+    if (chosen != 0xffffffffu) { break; }
+  }
+
+  selectedTargets[writeIndex] = chosen;
+  if (chosen != 0xffffffffu) {
+    selectedCount[i] = selectedCount[i] + 1u;
+  }
+}
+`;
+
+const SHADER_COMMUNICATION_TRANSMIT = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> qOut: array<u32>;
+@group(0) @binding(2) var<storage, read> selectedTargets: array<u32>;
+@group(0) @binding(3) var<storage, read_write> incomingNext: array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> eventCount: atomic<u32>;
+@group(0) @binding(5) var<storage, read_write> eventSender: array<u32>;
+@group(0) @binding(6) var<storage, read_write> eventTarget: array<u32>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let sender = gid.x;
+  if (sender >= params.activeCount || params.maxK == 0u || params.rank >= params.maxK) { return; }
+
+  let targetIndex = selectedTargets[sender * params.maxK + params.rank];
+  if (targetIndex == 0xffffffffu) { return; }
+
+  atomicAdd(&incomingNext[targetIndex], qOut[sender]);
+
+  let eventIndex = atomicAdd(&eventCount, 1u);
+  if (eventIndex < params.activeCount * params.maxK) {
+    eventSender[eventIndex] = sender;
+    eventTarget[eventIndex] = targetIndex;
+  }
+}
+`;
+
+const SHADER_LOCAL_SUCCESS = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> incomingPrevious: array<u32>;
+@group(0) @binding(2) var<storage, read> activeFlags: array<u32>;
+@group(0) @binding(3) var<storage, read> selectedCount: array<u32>;
+@group(0) @binding(4) var<storage, read_write> successful: array<u32>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  let received = incomingPrevious[i] > 0u || (i == params.inputSlot && params.inputSignal > 0.0);
+  let hasTargets = selectedCount[i] > 0u;
+  successful[i] = select(0u, 1u, received && activeFlags[i] != 0u && hasTargets);
+}
+`;
+
+const SHADER_HEALTH_UPDATE = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> healthIn: array<f32>;
+@group(0) @binding(2) var<storage, read> role: array<u32>;
+@group(0) @binding(3) var<storage, read> hmax: array<f32>;
+@group(0) @binding(4) var<storage, read> successful: array<u32>;
+@group(0) @binding(5) var<storage, read_write> healthOut: array<f32>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  if (role[i] != 0u) {
+    healthOut[i] = healthIn[i];
+    return;
+  }
+
+  let reward = select(0.0, 1.0, successful[i] != 0u);
+  healthOut[i] = clamp(
+    healthIn[i] + params.beta * reward - params.lambda * params.globalPressure,
+    0.0,
+    hmax[i],
+  );
+}
+`;
+
+const SHADER_FORCE = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> charges: array<u32>;
+@group(0) @binding(4) var<storage, read> role: array<u32>;
+@group(0) @binding(5) var<storage, read> targetRs: array<f32>;
+@group(0) @binding(6) var<storage, read> targetA: array<f32>;
+@group(0) @binding(7) var<storage, read> omegaR: array<f32>;
+@group(0) @binding(8) var<storage, read> omegaA: array<f32>;
+@group(0) @binding(9) var<storage, read> omegaV: array<f32>;
+@group(0) @binding(10) var<storage, read_write> cellHead: array<atomic<u32>>;
+@group(0) @binding(11) var<storage, read> particleNext: array<u32>;
+@group(0) @binding(12) var<storage, read_write> force: array<vec2<f32>>;
+
+fn wrappedCell(c: i32, count: u32) -> u32 {
+  let m = i32(count);
+  var x = c % m;
+  if (x < 0) { x += m; }
+  return u32(x);
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  if (role[i] != 0u) {
+    force[i] = vec2<f32>(0.0, 0.0);
+    return;
+  }
+
+  let q = f32(charges[i]);
+  let range = params.rsMin + (params.rsMax - params.rsMin) * (q / f32(params.qmax));
+  if (!(range > 0.0)) {
+    force[i] = vec2<f32>(0.0, 0.0);
+    return;
+  }
+
+  let cx = i32(min(u32(floor(positions[i].x / params.gridCellSize)), params.gridCountX - 1u));
+  let cy = i32(min(u32(floor(positions[i].y / params.gridCellSize)), params.gridCountY - 1u));
+  var fx = 0.0;
+  var fy = 0.0;
+
+  for (var oy = -1; oy <= 1; oy++) {
+    if (params.gridCountY == 1u && oy != 0) { continue; }
+    if (params.gridCountY == 2u && oy == 1) { continue; }
+    for (var ox = -1; ox <= 1; ox++) {
+      if (params.gridCountX == 1u && ox != 0) { continue; }
+      if (params.gridCountX == 2u && ox == 1) { continue; }
+
+      let nx = wrappedCell(cx + ox, params.gridCountX);
+      let ny = wrappedCell(cy + oy, params.gridCountY);
+      let cell = ny * params.gridCountX + nx;
+      var j = atomicLoad(&cellHead[cell]);
+
+      for (var hop = 0u; hop < params.activeCount; hop++) {
+        if (j == 0xffffffffu) {
+            break;
+        }
+        if (j >= params.activeCount) {
+            break;
+        }
+
+        if (i != j) {
+          let delta = periodicDelta(positions[i], positions[j]);
+          let distance = length(delta);
+          if (distance != 0.0 && distance <= range) {
+            let spatialScore = omegaR[i] * feature(targetRs[j], params.rsMax)
+              + omegaA[i] * feature(targetA[j], 10.0)
+              + omegaV[i] * feature(length(velocities[j]), 10.0);
+
+            let magnitude = spatialScore * (1.0 - distance / range);
+            let forceFactor = magnitude / (distance + params.epsilon);
+            fx += forceFactor * delta.x;
+            fy += forceFactor * delta.y;
+          }
+        }
+
+        let next = particleNext[j];
+        if (next == j) {
+            break;
+        }
+        j = next;
+      }
+    }
+  }
+
+  force[i] = vec2<f32>(fx, fy);
+}
+`;
+
+const SHADER_MECHANICS = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> positionsIn: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read> velocitiesIn: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> force: array<vec2<f32>>;
+@group(0) @binding(4) var<storage, read> role: array<u32>;
+@group(0) @binding(5) var<storage, read> mass: array<f32>;
+@group(0) @binding(6) var<storage, read> gamma: array<f32>;
+@group(0) @binding(7) var<storage, read_write> positionsOut: array<vec2<f32>>;
+@group(0) @binding(8) var<storage, read_write> velocitiesOut: array<vec2<f32>>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  if (role[i] != 0u) {
+    positionsOut[i] = positionsIn[i];
+    velocitiesOut[i] = vec2<f32>(0.0, 0.0);
+    return;
+  }
+
+  let v = velocitiesIn[i];
+  let acceleration = (force[i] - gamma[i] * v) / mass[i];
+  let nextV = v + params.dt * acceleration;
+  let nextP = positionsIn[i] + params.dt * nextV;
+
+  positionsOut[i] = vec2<f32>(
+    wrapCoordinate(nextP.x, params.lx),
+    wrapCoordinate(nextP.y, params.ly),
+  );
+  velocitiesOut[i] = nextV;
+}
+`;
