@@ -24,6 +24,7 @@ const UINT32_MAX = 0xffffffff;
 const UNIFORM_BUFFER_SIZE = 96;
 const UNIFORM_DYNAMIC_STRIDE = 256;
 const MAX_GRID_CELLS = 262_144;
+const WORKGROUP_SIZE = 128;
 // WebGPU enum values are used as local constants so this package does not
 // depend on ambient enum declarations such as GPUBufferUsage/GPUMapMode/
 // GPUShaderStage being present in the TypeScript lib configuration.
@@ -136,17 +137,8 @@ export class MfmWebGPUStepper {
     selectedCountBuffer;
     forceBuffer;
     paramsBuffer;
-    /** Staging buffers used by the single batched readback operation. */
-    stagingPositions;
-    stagingVelocities;
-    stagingHealths;
-    stagingCharges;
-    stagingQOut;
-    stagingQResidual;
-    stagingActive;
-    stagingSuccessful;
-    stagingSelectedTargets;
-    stagingSelectedCounts;
+    /** Single packed staging buffer used for the GPU -> CPU readback. */
+    stagingReadback;
     /** Compute pipelines. */
     gridClearPipeline;
     gridBuildPipeline;
@@ -157,6 +149,7 @@ export class MfmWebGPUStepper {
     localSuccessPipeline;
     healthUpdatePipeline;
     forcePipeline;
+    forceAllPairsPipeline;
     mechanicsPipeline;
     constructor(device, config, population, seed) {
         this.device = device;
@@ -171,6 +164,39 @@ export class MfmWebGPUStepper {
         await this.createPipelines();
         await this.recreateGpuBuffers(true);
         this.initialized = true;
+    }
+    getReadbackLayout() {
+        let offset = 0;
+        const positions = offset;
+        offset += this.capacity * 8;
+        const velocities = offset;
+        offset += this.capacity * 8;
+        const healths = offset;
+        offset += this.capacity * 4;
+        const charges = offset;
+        offset += this.capacity * 4;
+        const qOut = offset;
+        offset += this.capacity * 4;
+        const active = offset;
+        offset += this.capacity * 4;
+        const successful = offset;
+        offset += this.capacity * 4;
+        const selectedCounts = offset;
+        offset += this.capacity * 4;
+        const selectedTargets = offset;
+        offset += this.capacity * Math.max(1, this.maxK) * 4;
+        return {
+            positions,
+            velocities,
+            healths,
+            charges,
+            qOut,
+            active,
+            successful,
+            selectedCounts,
+            selectedTargets,
+            totalBytes: offset,
+        };
     }
     getConfig() {
         return this.config;
@@ -197,7 +223,6 @@ export class MfmWebGPUStepper {
     }
     /** Execute one complete MFM v3 transition. */
     async stepUnsafe() {
-        console.log('stepping');
         if (!this.initialized) {
             await this.init();
         }
@@ -256,7 +281,7 @@ export class MfmWebGPUStepper {
         // snapshot and is therefore only an acceleration structure; it does not
         // alter the mathematical neighborhood definition.
         // -----------------------------------------------------------------------
-        this.dispatchCompute(commandEncoder, this.gridClearPipeline, this.createGridClearBindGroup(), 0, Math.ceil((this.gridCountX * this.gridCountY) / 64));
+        this.dispatchCompute(commandEncoder, this.gridClearPipeline, this.createGridClearBindGroup(), 0, Math.ceil((this.gridCountX * this.gridCountY) / WORKGROUP_SIZE));
         this.dispatchCompute(commandEncoder, this.gridBuildPipeline, this.createGridBuildBindGroup(stateRead));
         // -----------------------------------------------------------------------
         // Phase 1/2 — Charge processing + decay/cap
@@ -290,37 +315,31 @@ export class MfmWebGPUStepper {
         // Phase 6 — Charge-dependent spatial range + asymmetric force.
         // Force deliberately reads q_i^n from stateRead, not q_i^{n+1}.
         // -----------------------------------------------------------------------
+        // // Force is computed from the current snapshot, not the next-step charges, so that
+        // // the GPU result is mathematically equivalent to the CPU reference.
         this.dispatchCompute(commandEncoder, this.forcePipeline, this.createForceBindGroup(stateRead));
+        // Force all-pairs is a fallback for small populations where the grid is not used.
+        // this.dispatchCompute(commandEncoder, this.forceAllPairsPipeline,
+        //   this.createForceAllPairsBindGroup(stateRead),
+        // );
         // -----------------------------------------------------------------------
         // Phase 7 — Semi-implicit Euler mechanics.
         // -----------------------------------------------------------------------
         this.dispatchCompute(commandEncoder, this.mechanicsPipeline, this.createMechanicsBindGroup(stateRead, stateWrite));
-        commandEncoder.copyBufferToBuffer(this.positionBuffers[stateWrite], 0, this.stagingPositions, 0, this.particleCount * 8);
-        commandEncoder.copyBufferToBuffer(this.velocityBuffers[stateWrite], 0, this.stagingVelocities, 0, this.particleCount * 8);
-        commandEncoder.copyBufferToBuffer(this.healthBuffers[stateWrite], 0, this.stagingHealths, 0, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.chargeBuffers[stateWrite], 0, this.stagingCharges, 0, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.qOutBuffer, 0, this.stagingQOut, 0, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.activeBuffer, 0, this.stagingActive, 0, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.successfulBuffer, 0, this.stagingSuccessful, 0, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.selectedCountBuffer, 0, this.stagingSelectedCounts, 0, this.particleCount * 4);
+        const readbackLayout = this.getReadbackLayout();
+        commandEncoder.copyBufferToBuffer(this.positionBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.positions, this.particleCount * 8);
+        commandEncoder.copyBufferToBuffer(this.velocityBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.velocities, this.particleCount * 8);
+        commandEncoder.copyBufferToBuffer(this.healthBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.healths, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.chargeBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.charges, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.qOutBuffer, 0, this.stagingReadback, readbackLayout.qOut, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.activeBuffer, 0, this.stagingReadback, readbackLayout.active, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.successfulBuffer, 0, this.stagingReadback, readbackLayout.successful, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.selectedCountBuffer, 0, this.stagingReadback, readbackLayout.selectedCounts, this.particleCount * 4);
         if (this.maxK > 0) {
-            commandEncoder.copyBufferToBuffer(this.selectedTargetsBuffer, 0, this.stagingSelectedTargets, 0, this.particleCount * this.maxK * 4);
+            commandEncoder.copyBufferToBuffer(this.selectedTargetsBuffer, 0, this.stagingReadback, readbackLayout.selectedTargets, this.particleCount * this.maxK * 4);
         }
         this.device.queue.submit([commandEncoder.finish()]);
-        await this.device.queue.onSubmittedWorkDone();
         const readback = await this.readbackResults();
-        console.log('=== GPU CHARGE PIPELINE DEBUG ===');
-        for (let i = 0; i < Math.min(10, this.particleCount); i++) {
-            console.log({
-                i,
-                id: this.slotToId[i],
-                chargeIn: snapshot[i].state.charge,
-                residual: readback.qResidual[i],
-                chargeOut: readback.charges[i],
-                qOut: readback.qOut[i],
-                active: readback.active[i],
-            });
-        }
         // The GPU writes now represent P_{n+1} for surviving current particles.
         this.stateIndex = stateWrite;
         this.incomingIndex = incomingWrite;
@@ -398,10 +417,11 @@ export class MfmWebGPUStepper {
         this.population = nextPopulation;
         this.incomingChargeMap = nextIncomingCharges;
         this.incomingSendersMap = nextIncomingSenders;
-        // Population changes are applied after mechanics, exactly as in the CPU
-        // reference. New children enter with q=0 and empty history.
+        const previousParticleIds = new Set(snapshot.map((item) => item.id));
+        const populationStructureChanged = nextPopulation.particles.size !== snapshot.length ||
+            Array.from(nextPopulation.particles.keys()).some((id) => !previousParticleIds.has(id));
         this.refreshCpuSlotMapping();
-        await this.resyncAfterPopulationStep();
+        await this.resyncAfterPopulationStep(populationStructureChanged);
         this.timestep++;
         return this.population;
     }
@@ -538,15 +558,7 @@ export class MfmWebGPUStepper {
             this.selectedCountBuffer,
             this.forceBuffer,
             this.paramsBuffer,
-            this.stagingPositions,
-            this.stagingVelocities,
-            this.stagingHealths,
-            this.stagingCharges,
-            this.stagingQOut,
-            this.stagingActive,
-            this.stagingSuccessful,
-            this.stagingSelectedTargets,
-            this.stagingSelectedCounts,
+            this.stagingReadback,
         ];
         const seen = new Set();
         for (const buffer of buffers) {
@@ -639,16 +651,8 @@ export class MfmWebGPUStepper {
             label: 'mfm-params',
         });
         const stagingUsage = BUFFER_USAGE_MAP_READ | BUFFER_USAGE_COPY_DST;
-        this.stagingPositions = make(float2Bytes, stagingUsage, 'mfm-stage-positions');
-        this.stagingVelocities = make(float2Bytes, stagingUsage, 'mfm-stage-velocities');
-        this.stagingHealths = make(floatBytes, stagingUsage, 'mfm-stage-health');
-        this.stagingCharges = make(uintBytes, stagingUsage, 'mfm-stage-charge');
-        this.stagingQOut = make(uintBytes, stagingUsage, 'mfm-stage-qout');
-        this.stagingQResidual = make(uintBytes, stagingUsage, 'mfm-stage-q-residual');
-        this.stagingActive = make(uintBytes, stagingUsage, 'mfm-stage-active');
-        this.stagingSuccessful = make(uintBytes, stagingUsage, 'mfm-stage-success');
-        this.stagingSelectedTargets = make(eventBytes, stagingUsage, 'mfm-stage-targets');
-        this.stagingSelectedCounts = make(uintBytes, stagingUsage, 'mfm-stage-selected-counts');
+        const readbackLayout = this.getReadbackLayout();
+        this.stagingReadback = make(readbackLayout.totalBytes, stagingUsage, 'mfm-stage-readback');
     }
     destroyDataBuffersOnly() {
         const buffers = [
@@ -683,15 +687,7 @@ export class MfmWebGPUStepper {
             this.selectedCountBuffer,
             this.forceBuffer,
             this.paramsBuffer,
-            this.stagingPositions,
-            this.stagingVelocities,
-            this.stagingHealths,
-            this.stagingCharges,
-            this.stagingQOut,
-            this.stagingActive,
-            this.stagingSuccessful,
-            this.stagingSelectedTargets,
-            this.stagingSelectedCounts,
+            this.stagingReadback,
         ];
         const seen = new Set();
         for (const buffer of buffers) {
@@ -708,8 +704,6 @@ export class MfmWebGPUStepper {
         const velocities = new Float32Array(this.capacity * 2);
         const healths = new Float32Array(this.capacity);
         const charges = new Uint32Array(this.capacity);
-        console.log(this.population);
-        console.log('population');
         const roles = new Uint32Array(this.capacity);
         const idHashes = new Uint32Array(this.capacity);
         const hmax = new Float32Array(this.capacity);
@@ -778,25 +772,6 @@ export class MfmWebGPUStepper {
             const id = this.slotToId[i];
             scheduledIncoming[i] = this.clampInteger(this.incomingChargeMap.get(id) ?? 0, 0, UINT32_MAX);
         }
-        // ---------------------------------------------------------------------------
-        // DEBUG: verify the exact charge values being uploaded to the GPU.
-        // This is the state that SHADER_CHARGE_PROCESS will read as chargeIn
-        // and incomingCharge on the next dispatch.
-        // ---------------------------------------------------------------------------
-        console.log('=== CHARGE INPUT DEBUG ===');
-        for (let i = 0; i < Math.min(10, this.particleCount); i++) {
-            const id = this.slotToId[i];
-            console.log({
-                i,
-                id,
-                chargeIn: charges[i],
-                incomingCharge: scheduledIncoming[i],
-            });
-        }
-        console.log('incomingChargeMap:', this.incomingChargeMap);
-        console.log('Qmax:', this.config.Qmax);
-        console.log('QinMax:', this.config.Q_in_max);
-        console.log('deltaQ:', this.config.delta_q);
         this.device.queue.writeBuffer(this.incomingChargeBuffers[this.incomingIndex], 0, scheduledIncoming);
         this.device.queue.writeBuffer(this.incomingChargeBuffers[1 - this.incomingIndex], 0, new Uint32Array(this.capacity));
         this.device.queue.writeBuffer(this.senderCountBuffers[0], 0, new Uint32Array([0]));
@@ -811,7 +786,13 @@ export class MfmWebGPUStepper {
         this.eventIndex = 0;
         this.stateIndex = 0;
     }
-    async resyncAfterPopulationStep() {
+    async resyncAfterPopulationStep(populationStructureChanged) {
+        // During a normal timestep the GPU already contains the complete
+        // P_{n+1} state. Avoid rebuilding/uploading the CPU population again
+        // unless particle topology actually changed.
+        if (!populationStructureChanged) {
+            return;
+        }
         const desiredCapacity = Math.max(1, this.config.Nmax, this.population.particles.size);
         const desiredMaxK = this.computeRequiredMaxK();
         const desiredGrid = this.computeGridSpec();
@@ -886,6 +867,11 @@ export class MfmWebGPUStepper {
             { binding: 11, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
             { binding: 12, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
         ]);
+        this.forceAllPairsPipeline = this.makePipeline('mfm-force-all-pairs', SHADER_FORCE_ALL_PAIRS, [
+            { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+            ...this.readonlyBindings(1, 9),
+            { binding: 10, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        ]);
         this.mechanicsPipeline = this.makePipeline('mfm-mechanics', SHADER_MECHANICS, [
             { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
             ...this.readonlyBindings(1, 6),
@@ -922,7 +908,7 @@ export class MfmWebGPUStepper {
     // -------------------------------------------------------------------------
     // Compute dispatch helpers / bind groups
     // -------------------------------------------------------------------------
-    dispatchCompute(encoder, pipelineBundle, bindGroup, dynamicOffset = 0, workgroupCount = Math.ceil(this.particleCount / 64)) {
+    dispatchCompute(encoder, pipelineBundle, bindGroup, dynamicOffset = 0, workgroupCount = Math.ceil(this.particleCount / WORKGROUP_SIZE)) {
         const pass = encoder.beginComputePass();
         pass.setPipeline(pipelineBundle.pipeline);
         pass.setBindGroup(0, bindGroup, [dynamicOffset]);
@@ -1043,8 +1029,23 @@ export class MfmWebGPUStepper {
             this.genomeOmegaRBuffer,
             this.genomeOmegaABuffer,
             this.genomeOmegaVBuffer,
-            this.genomeGammaBuffer,
-            this.genomeMBuffer,
+            this.cellHeadBuffer,
+            this.particleNextBuffer,
+            this.forceBuffer,
+        ]);
+    }
+    createForceAllPairsBindGroup(stateRead) {
+        return this.makeBindGroup(this.forceAllPairsPipeline.layout, [
+            this.paramsBuffer,
+            this.positionBuffers[stateRead],
+            this.velocityBuffers[stateRead],
+            this.chargeBuffers[stateRead],
+            this.roleBuffer,
+            this.genomeRsBuffer,
+            this.genomeABuffer,
+            this.genomeOmegaRBuffer,
+            this.genomeOmegaABuffer,
+            this.genomeOmegaVBuffer,
             this.forceBuffer,
         ]);
     }
@@ -1065,64 +1066,40 @@ export class MfmWebGPUStepper {
     // Readback / CPU population update
     // -------------------------------------------------------------------------
     async readbackResults() {
-        const commandEncoder = this.device.createCommandEncoder({ label: `mfm-readback-${this.timestep}` });
-        const stateBytes = this.particleCount * 4;
-        commandEncoder.copyBufferToBuffer(this.positionBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingPositions, 0, this.particleCount * 8);
-        commandEncoder.copyBufferToBuffer(this.velocityBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingVelocities, 0, this.particleCount * 8);
-        commandEncoder.copyBufferToBuffer(this.healthBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingHealths, 0, stateBytes);
-        commandEncoder.copyBufferToBuffer(this.chargeBuffers[this.stateIndex === 0 ? 1 : 0], 0, this.stagingCharges, 0, stateBytes);
-        commandEncoder.copyBufferToBuffer(this.qOutBuffer, 0, this.stagingQOut, 0, stateBytes);
-        commandEncoder.copyBufferToBuffer(this.activeBuffer, 0, this.stagingActive, 0, stateBytes);
-        commandEncoder.copyBufferToBuffer(this.successfulBuffer, 0, this.stagingSuccessful, 0, stateBytes);
-        commandEncoder.copyBufferToBuffer(this.selectedCountBuffer, 0, this.stagingSelectedCounts, 0, stateBytes);
-        if (this.maxK > 0) {
-            commandEncoder.copyBufferToBuffer(this.selectedTargetsBuffer, 0, this.stagingSelectedTargets, 0, this.particleCount * this.maxK * 4);
-        }
-        this.device.queue.submit([commandEncoder.finish()]);
-        await this.device.queue.onSubmittedWorkDone();
-        const positions = await this.mapFloat32(this.stagingPositions, this.particleCount * 2);
-        const velocities = await this.mapFloat32(this.stagingVelocities, this.particleCount * 2);
-        const healths = await this.mapFloat32(this.stagingHealths, this.particleCount);
-        const charges = await this.mapUint32(this.stagingCharges, this.particleCount);
-        const qOut = await this.mapUint32(this.stagingQOut, this.particleCount);
-        const qResidual = await this.mapUint32(this.stagingQResidual, this.particleCount);
-        const active = await this.mapUint32(this.stagingActive, this.particleCount);
-        const successful = await this.mapUint32(this.stagingSuccessful, this.particleCount);
-        const selectedCounts = await this.mapUint32(this.stagingSelectedCounts, this.particleCount);
-        const selectedTargets = this.maxK > 0
-            ? await this.mapUint32(this.stagingSelectedTargets, this.particleCount * this.maxK)
-            : new Uint32Array(0);
-        return {
-            positions,
-            velocities,
-            healths,
-            charges,
-            qOut,
-            qResidual,
-            active,
-            successful,
-            selectedTargets,
-            selectedCounts,
-        };
-    }
-    async mapFloat32(buffer, length) {
-        await buffer.mapAsync(MAP_MODE_READ);
+        const layout = this.getReadbackLayout();
+        const particleCount = this.particleCount;
+        const maxK = this.maxK;
+        await this.stagingReadback.mapAsync(MAP_MODE_READ);
         try {
-            const data = new Float32Array(buffer.getMappedRange().slice(0));
-            return data.slice(0, length);
+            const mapped = this.stagingReadback.getMappedRange();
+            // Copy the whole mapped range once so the returned typed arrays remain
+            // valid after the GPU buffer is unmapped.
+            const data = mapped.slice(0);
+            const positions = new Float32Array(data, layout.positions, particleCount * 2);
+            const velocities = new Float32Array(data, layout.velocities, particleCount * 2);
+            const healths = new Float32Array(data, layout.healths, particleCount);
+            const charges = new Uint32Array(data, layout.charges, particleCount);
+            const qOut = new Uint32Array(data, layout.qOut, particleCount);
+            const active = new Uint32Array(data, layout.active, particleCount);
+            const successful = new Uint32Array(data, layout.successful, particleCount);
+            const selectedCounts = new Uint32Array(data, layout.selectedCounts, particleCount);
+            const selectedTargets = maxK > 0
+                ? new Uint32Array(data, layout.selectedTargets, particleCount * maxK)
+                : new Uint32Array(0);
+            return {
+                positions,
+                velocities,
+                healths,
+                charges,
+                qOut,
+                active,
+                successful,
+                selectedTargets,
+                selectedCounts,
+            };
         }
         finally {
-            buffer.unmap();
-        }
-    }
-    async mapUint32(buffer, length) {
-        await buffer.mapAsync(MAP_MODE_READ);
-        try {
-            const data = new Uint32Array(buffer.getMappedRange().slice(0));
-            return data.slice(0, length);
-        }
-        finally {
-            buffer.unmap();
+            this.stagingReadback.unmap();
         }
     }
     addOffspring(snapshot, nextStates, nextGenomes, events) {
@@ -1227,8 +1204,8 @@ export class MfmWebGPUStepper {
         const area = this.config.Lx * this.config.Ly;
         const minimumCellSizeForBudget = Math.sqrt(area / MAX_GRID_CELLS);
         const cellSize = Math.max(maxInteractionRange, minimumCellSizeForBudget);
-        const countX = Math.max(1, Math.ceil(this.config.Lx / cellSize));
-        const countY = Math.max(1, Math.ceil(this.config.Ly / cellSize));
+        const countX = Math.max(1, Math.floor(this.config.Lx / cellSize));
+        const countY = Math.max(1, Math.floor(this.config.Ly / cellSize));
         return { countX, countY, cellSize };
     }
     validateConfiguration() {
@@ -1407,7 +1384,7 @@ fn random01(idHash: u32, rank: u32) -> f32 {
 const SHADER_GRID_CLEAR = /* wgsl */ `${COMMON}
 @group(0) @binding(1) var<storage, read_write> cellHead: array<atomic<u32>>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let cell = gid.x;
   let cellCount = params.gridCountX * params.gridCountY;
@@ -1420,7 +1397,7 @@ const SHADER_GRID_BUILD = /* wgsl */ `${COMMON}
 @group(0) @binding(2) var<storage, read_write> cellHead: array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read_write> particleNext: array<u32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount) { return; }
@@ -1436,7 +1413,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   particleNext[i] = oldHead;
 }
 `;
-const SHADER_CHARGE_PROCESS = /* wgsl */ `${COMMON}
+const SHADER_CHARGE_PROCESS = `${COMMON}
 @group(0) @binding(1) var<storage, read> chargeIn: array<u32>;
 @group(0) @binding(2) var<storage, read> incomingCharge: array<u32>;
 @group(0) @binding(3) var<storage, read> role: array<u32>;
@@ -1446,48 +1423,41 @@ const SHADER_CHARGE_PROCESS = /* wgsl */ `${COMMON}
 @group(0) @binding(7) var<storage, read_write> activeFlags: array<u32>;
 @group(0) @binding(8) var<storage, read_write> qOut: array<u32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
-  if (i >= params.activeCount) { return; }
+  if (i >= params.activeCount) {return;}
 
   let inputCharge = select(0u, min(params.qinMax, u32(jsRound(f32(params.qinMax) * params.inputSignal))), i == params.inputSlot);
 
-  // Saturating intermediate addition prevents u32 wrap-around before the
-  // mathematical hard charge cap is applied in the next pass.
-  var qPre = chargeIn[i];
-  let r = incomingCharge[i];
-  if (qPre > 0xffffffffu - r) {
-    qPre = 0xffffffffu;
-  } else {
-    qPre += r;
-  }
-  if (qPre > 0xffffffffu - inputCharge) {
-    qPre = 0xffffffffu;
-  } else {
-    qPre += inputCharge;
-  }
-
+  let qPre = chargeIn[i] + incomingCharge[i] + inputCharge;
   let theta = thetaQ[i];
   let isActive = qPre >= theta;
   activeFlags[i] = select(0u, 1u, isActive);
 
   let produced = select(0.0, jsRound(amplification[i] * f32(theta)), isActive);
   qOut[i] = u32(clamp(produced, 0.0, 4294967295.0));
+  var residual = qPre;
 
-  qResidual[i] = qPre - select(0u, theta, isActive);
+  if (isActive) {
+    residual = qPre - theta;
+  }
+  
+  qResidual[i] = residual;
 }
 `;
 const SHADER_CHARGE_FINALIZE = /* wgsl */ `${COMMON}
 @group(0) @binding(1) var<storage, read> qResidual: array<u32>;
 @group(0) @binding(2) var<storage, read_write> chargeOut: array<u32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount) { return; }
 
-  chargeOut[i] = qResidual[i];
+  let residual = qResidual[i];
+  let postDecay = select(0u, residual - min(residual, params.deltaQ), residual > 0u);
+  chargeOut[i] = min(params.qmax, postDecay);
 }
 `;
 const SHADER_COMMUNICATION_SELECT = /* wgsl */ `${COMMON}
@@ -1529,7 +1499,7 @@ fn wrappedCell(c: i32, count: u32) -> u32 {
   return u32(x);
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount || params.maxK == 0u) { return; }
@@ -1541,6 +1511,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let cx = i32(min(u32(floor(positions[i].x / params.gridCellSize)), params.gridCountX - 1u));
   let cy = i32(min(u32(floor(positions[i].y / params.gridCellSize)), params.gridCountY - 1u));
+
+  let sourceRange = sourceRc[i];
+  let sourceRangeSquared = sourceRange * sourceRange;
 
   var maxScore = 0.0;
   for (var oy = -1; oy <= 1; oy++) {
@@ -1566,8 +1539,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
         if (j != i && !isSelected(i, j)) {
           let delta = periodicDelta(positions[i], positions[j]);
-          let d = length(delta);
-          if (d <= sourceRc[i]) {
+          let d2 = dot(delta, delta);
+          if (d2 <= sourceRangeSquared) {
             maxScore = max(maxScore, score(i, j));
           }
         }
@@ -1604,8 +1577,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
         if (j != i && !isSelected(i, j)) {
           let delta = periodicDelta(positions[i], positions[j]);
-          let d = length(delta);
-          if (d <= sourceRc[i]) {
+          let d2 = dot(delta, delta);
+          if (d2 <= sourceRangeSquared) {
             totalWeight += exp(params.communicationAlpha * (score(i, j) - maxScore));
           }
         }
@@ -1647,8 +1620,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
         if (j != i && !isSelected(i, j)) {
           let delta = periodicDelta(positions[i], positions[j]);
-          let d = length(delta);
-          if (d <= sourceRc[i]) {
+          let d2 = dot(delta, delta);
+          if (d2 <= sourceRangeSquared) {
             let weight = exp(params.communicationAlpha * (score(i, j) - maxScore));
             cumulative += weight;
             if (sample < cumulative) {
@@ -1683,7 +1656,7 @@ const SHADER_COMMUNICATION_TRANSMIT = /* wgsl */ `${COMMON}
 @group(0) @binding(5) var<storage, read_write> eventSender: array<u32>;
 @group(0) @binding(6) var<storage, read_write> eventTarget: array<u32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let sender = gid.x;
   if (sender >= params.activeCount || params.maxK == 0u || params.rank >= params.maxK) { return; }
@@ -1706,7 +1679,7 @@ const SHADER_LOCAL_SUCCESS = /* wgsl */ `${COMMON}
 @group(0) @binding(3) var<storage, read> selectedCount: array<u32>;
 @group(0) @binding(4) var<storage, read_write> successful: array<u32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount) { return; }
@@ -1723,7 +1696,7 @@ const SHADER_HEALTH_UPDATE = /* wgsl */ `${COMMON}
 @group(0) @binding(4) var<storage, read> successful: array<u32>;
 @group(0) @binding(5) var<storage, read_write> healthOut: array<f32>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount) { return; }
@@ -1762,7 +1735,7 @@ fn wrappedCell(c: i32, count: u32) -> u32 {
   return u32(x);
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount) { return; }
@@ -1774,6 +1747,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let q = f32(charges[i]);
   let range = params.rsMin + (params.rsMax - params.rsMin) * (q / f32(params.qmax));
+  let rangeSquared = range * range;
   if (!(range > 0.0)) {
     force[i] = vec2<f32>(0.0, 0.0);
     return;
@@ -1806,8 +1780,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
         if (i != j) {
           let delta = periodicDelta(positions[i], positions[j]);
-          let distance = length(delta);
-          if (distance != 0.0 && distance <= range) {
+          let distanceSquared = dot(delta, delta);
+
+          if (distanceSquared > 0.0 && distanceSquared <= rangeSquared) {
+            let distance = sqrt(distanceSquared);
+
             let spatialScore = omegaR[i] * feature(targetRs[j], params.rsMax)
               + omegaA[i] * feature(targetA[j], 10.0)
               + omegaV[i] * feature(length(velocities[j]), 10.0);
@@ -1831,6 +1808,82 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   force[i] = vec2<f32>(fx, fy);
 }
 `;
+const SHADER_FORCE_ALL_PAIRS = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> charges: array<u32>;
+@group(0) @binding(4) var<storage, read> role: array<u32>;
+@group(0) @binding(5) var<storage, read> targetRs: array<f32>;
+@group(0) @binding(6) var<storage, read> targetA: array<f32>;
+@group(0) @binding(7) var<storage, read> omegaR: array<f32>;
+@group(0) @binding(8) var<storage, read> omegaA: array<f32>;
+@group(0) @binding(9) var<storage, read> omegaV: array<f32>;
+@group(0) @binding(10) var<storage, read_write> force: array<vec2<f32>>;
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.activeCount) { return; }
+
+  if (role[i] != 0u) {
+    force[i] = vec2<f32>(0.0, 0.0);
+    return;
+  }
+
+  let q = f32(charges[i]);
+
+  let range =
+    params.rsMin +
+    (params.rsMax - params.rsMin) *
+    (q / f32(params.qmax));
+
+  if (!(range > 0.0)) {
+    force[i] = vec2<f32>(0.0, 0.0);
+    return;
+  }
+
+  var fx = 0.0;
+  var fy = 0.0;
+
+  // Exact all-pairs equivalent of the CPU reference:
+  // every particle j is considered, then the spatial range
+  // and periodic distance decide whether it contributes.
+  for (var j = 0u; j < params.activeCount; j++) {
+    if (j == i) {
+      continue;
+    }
+
+    let delta = periodicDelta(
+      positions[i],
+      positions[j]
+    );
+
+    let distance = length(delta);
+
+    if (distance == 0.0 || distance > range) {
+      continue;
+    }
+
+    let spatialScore =
+      omegaR[i] * feature(targetRs[j], params.rsMax) +
+      omegaA[i] * feature(targetA[j], 10.0) +
+      omegaV[i] * feature(length(velocities[j]), 10.0);
+
+    let magnitude =
+      spatialScore *
+      (1.0 - distance / range);
+
+    let forceFactor =
+      magnitude /
+      (distance + params.epsilon);
+
+    fx += forceFactor * delta.x;
+    fy += forceFactor * delta.y;
+  }
+
+  force[i] = vec2<f32>(fx, fy);
+}
+`;
 const SHADER_MECHANICS = /* wgsl */ `${COMMON}
 @group(0) @binding(1) var<storage, read> positionsIn: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read> velocitiesIn: array<vec2<f32>>;
@@ -1841,7 +1894,7 @@ const SHADER_MECHANICS = /* wgsl */ `${COMMON}
 @group(0) @binding(7) var<storage, read_write> positionsOut: array<vec2<f32>>;
 @group(0) @binding(8) var<storage, read_write> velocitiesOut: array<vec2<f32>>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= params.activeCount) { return; }

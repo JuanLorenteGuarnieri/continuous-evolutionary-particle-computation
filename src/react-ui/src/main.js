@@ -182,6 +182,9 @@ function App() {
     const pressedKeysRef = useRef(new Set());
     const grabbingRef = useRef(false);
     const grabRangeRef = useRef(0.05);
+    const uiFpsSamplesRef = useRef([]);
+    const workerFpsSamplesRef = useRef([]);
+    const fpsUpdateTimerRef = useRef(null);
     // Simulation
     const [maxParticles, setMaxParticles] = useState(200);
     const [seed, setSeed] = useState(42);
@@ -276,6 +279,10 @@ function App() {
             return;
         const offscreen = new OffscreenCanvas(800, 600);
         const worker = new Worker(new URL('@worker', import.meta.url), { type: 'module' });
+        worker.onerror = (e) => {
+            console.error('Worker error:', e);
+            console.log('Worker script URL:', worker);
+        };
         workerRef.current = worker;
         const config = {
             Lx,
@@ -327,8 +334,10 @@ function App() {
                 case 'metrics':
                     setMetrics(payload.metrics);
                     setTimestep(payload.timestep);
-                    if (payload.workerFps !== undefined) {
-                        setWorkerFps(payload.workerFps);
+                    if (payload.workerFps !== undefined &&
+                        Number.isFinite(payload.workerFps) &&
+                        payload.workerFps > 0) {
+                        workerFpsSamplesRef.current.push(payload.workerFps);
                     }
                     break;
                 case 'particleInspection':
@@ -346,18 +355,29 @@ function App() {
                     break;
             }
         };
-        // FPS counter
+        fpsUpdateTimerRef.current = window.setInterval(() => {
+            const uiSamples = uiFpsSamplesRef.current;
+            const workerSamples = workerFpsSamplesRef.current;
+            if (uiSamples.length > 0) {
+                const uiAverage = uiSamples.reduce((sum, value) => sum + value, 0) / uiSamples.length;
+                setFps(+uiAverage.toFixed(1));
+            }
+            if (workerSamples.length > 0) {
+                const workerAverage = workerSamples.reduce((sum, value) => sum + value, 0) / workerSamples.length;
+                setWorkerFps(workerAverage);
+            }
+            uiFpsSamplesRef.current = [];
+            workerFpsSamplesRef.current = [];
+        }, 500);
         let lastTime = 0;
-        let fpsCount = 0;
-        let fpsTimer = 0;
         let animationFrameId = 0;
         const animate = (time) => {
-            fpsCount++;
-            fpsTimer += time - lastTime;
-            if (fpsTimer >= 1000) {
-                setFps(fpsCount);
-                fpsCount = 0;
-                fpsTimer = 0;
+            if (lastTime > 0) {
+                const delta = time - lastTime;
+                if (delta > 0) {
+                    const instantFps = 1000 / delta;
+                    uiFpsSamplesRef.current.push(instantFps);
+                }
             }
             lastTime = time;
             const activeBindings = bindingsRef.current;
@@ -376,6 +396,12 @@ function App() {
         animationFrameId = requestAnimationFrame(animate);
         return () => {
             cancelAnimationFrame(animationFrameId);
+            if (fpsUpdateTimerRef.current !== null) {
+                window.clearInterval(fpsUpdateTimerRef.current);
+                fpsUpdateTimerRef.current = null;
+            }
+            uiFpsSamplesRef.current = [];
+            workerFpsSamplesRef.current = [];
             worker.terminate();
             if (workerRef.current === worker) {
                 workerRef.current = null;
