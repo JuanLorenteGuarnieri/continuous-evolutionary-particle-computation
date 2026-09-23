@@ -1,4 +1,4 @@
-
+﻿
 /// <reference types="vite/client" />
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -349,6 +349,10 @@ function App() {
   const grabbingRef = useRef(false);
   const grabRangeRef = useRef(0.05);
 
+  const uiFpsSamplesRef = useRef<number[]>([]);
+  const workerFpsSamplesRef = useRef<number[]>([]);
+  const fpsUpdateTimerRef = useRef<number | null>(null);
+
   // Simulation
   const [maxParticles, setMaxParticles] = useState(200);
   const [seed, setSeed] = useState(42);
@@ -367,13 +371,13 @@ function App() {
 
   // Genome
   const [Hmax, setHmax] = useState(50);
- const [theta_q, setTheta_q] = useState(10);
- const [A, setA] = useState(1);
- const [K, setK] = useState(1);
- const [Rc, setRc] = useState(1.0);
- const [m, setM] = useState(1.0);
- const [gamma, setGamma] = useState(0.8);
- const [Rs, setRs] = useState(1.0);
+  const [theta_q, setTheta_q] = useState(10);
+  const [A, setA] = useState(1);
+  const [K, setK] = useState(1);
+  const [Rc, setRc] = useState(1.0);
+  const [m, setM] = useState(1.0);
+  const [gamma, setGamma] = useState(0.8);
+  const [Rs, setRs] = useState(1.0);
   const [omega_R, setOmega_R] = useState(0.1);
   const [omega_A, setOmega_A] = useState(-0.5);
   const [omega_v, setOmega_v] = useState(-0.5);
@@ -456,6 +460,11 @@ function App() {
       { type: 'module' }
     );
 
+    worker.onerror = (e) => {
+      console.error('Worker error:', e);
+      console.log('Worker script URL:', worker);
+    };
+
     workerRef.current = worker;
 
     const config = {
@@ -516,9 +525,15 @@ function App() {
         case 'metrics':
           setMetrics(payload.metrics);
           setTimestep(payload.timestep);
-          if (payload.workerFps !== undefined) {
-            setWorkerFps(payload.workerFps);
+
+          if (
+            payload.workerFps !== undefined &&
+            Number.isFinite(payload.workerFps) &&
+            payload.workerFps > 0
+          ) {
+            workerFpsSamplesRef.current.push(payload.workerFps);
           }
+
           break;
 
         case 'particleInspection':
@@ -543,20 +558,39 @@ function App() {
       }
     };
 
-    // FPS counter
+
+
+    fpsUpdateTimerRef.current = window.setInterval(() => {
+      const uiSamples = uiFpsSamplesRef.current;
+      const workerSamples = workerFpsSamplesRef.current;
+
+      if (uiSamples.length > 0) {
+        const uiAverage = uiSamples.reduce((sum, value) => sum + value, 0) / uiSamples.length;
+        setFps(+uiAverage.toFixed(1)); 
+      }
+
+      if (workerSamples.length > 0) {
+        const workerAverage =
+          workerSamples.reduce((sum, value) => sum + value, 0) / workerSamples.length;
+
+        setWorkerFps(workerAverage);
+      }
+
+      uiFpsSamplesRef.current = [];
+      workerFpsSamplesRef.current = [];
+    }, 500);
+
     let lastTime = 0;
-    let fpsCount = 0;
-    let fpsTimer = 0;
     let animationFrameId = 0;
 
     const animate = (time: number) => {
-      fpsCount++;
-      fpsTimer += time - lastTime;
+      if (lastTime > 0) {
+        const delta = time - lastTime;
 
-      if (fpsTimer >= 1000) {
-        setFps(fpsCount);
-        fpsCount = 0;
-        fpsTimer = 0;
+        if (delta > 0) {
+          const instantFps = 1000 / delta;
+          uiFpsSamplesRef.current.push(instantFps);
+        }
       }
 
       lastTime = time;
@@ -578,6 +612,15 @@ function App() {
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+
+      if (fpsUpdateTimerRef.current !== null) {
+        window.clearInterval(fpsUpdateTimerRef.current);
+        fpsUpdateTimerRef.current = null;
+      }
+
+      uiFpsSamplesRef.current = [];
+      workerFpsSamplesRef.current = [];
+
       worker.terminate();
 
       if (workerRef.current === worker) {

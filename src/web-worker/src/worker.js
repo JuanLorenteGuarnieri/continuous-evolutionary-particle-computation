@@ -27,7 +27,7 @@ let chargeBuffer = null;
 let particleCount = 0;
 let device = null;
 let webgpuReady = false;
-const globalError = 0.5;
+const globalError = 5.5;
 let frameInFlight = false;
 let currentConfig = null;
 let initializationRandomState = 1;
@@ -598,6 +598,7 @@ self.onmessage = async (event) => {
             timestep = 0;
             if (currentConfig) {
                 disposeSimulation();
+                initializationRandomState = (currentConfig.seed >>> 0) || 1;
                 population = createInitialPopulation(currentConfig);
                 recreateSimulationForBackend();
                 timestep = 0;
@@ -629,6 +630,7 @@ self.onmessage = async (event) => {
                     isPaused = false;
                     timestep = 0;
                     disposeSimulation();
+                    initializationRandomState = (currentConfig.seed >>> 0) || 1;
                     population = createInitialPopulation(currentConfig);
                     recreateSimulationForBackend();
                     syncRenderBuffers();
