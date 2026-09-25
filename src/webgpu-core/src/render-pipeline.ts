@@ -1,258 +1,302 @@
+// Phase 3 renderer: consumes simulation-owned GPU buffers and can be encoded
+// into the caller's command encoder. Rendering is kept deliberately close to
+// the CPU Canvas2D renderer used by worker.ts:
+//   - black background
+//   - internal particles: radius 2 px
+//   - input/output particles: radius 6 px
+//   - circular particles (not quads)
+//   - identical particle colours
+//   - fixed 800x600 render surface, as agreed for this renderer
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
+export interface RenderParticleState {
+  positions: GPUBuffer;
+  health: GPUBuffer;
+  charge: GPUBuffer;
+  role: GPUBuffer;
+  particleCount: number;
+}
+
 export class RenderPipeline {
-   private device: GPUDevice;
-   private pipeline: GPURenderPipeline | null = null;
-   private bindGroupLayout: GPUBindGroupLayout | null = null;
-   private bindGroup: GPUBindGroup | null = null;
+  private device: GPUDevice;
+  private pipeline: GPURenderPipeline | null = null;
+  private bindGroupLayout: GPUBindGroupLayout | null = null;
+  private bindGroup: GPUBindGroup | null = null;
   private uniformBuffer: GPUBuffer | null = null;
-   private vertexBuffer: GPUBuffer | null = null;
-   private instanceBuffer: GPUBuffer | null = null;
-  private vertexBufferSize = 0;
-  private instanceBufferSize = 0;
+  private positionsBuffer: GPUBuffer | null = null;
+  private healthBuffer: GPUBuffer | null = null;
+  private chargeBuffer: GPUBuffer | null = null;
+  private roleBuffer: GPUBuffer | null = null;
+  private boundParticleCount = 0;
 
-   constructor(device: GPUDevice) {
-     this.device = device;
-   }
+  constructor(device: GPUDevice) {
+    this.device = device;
+  }
 
-   async init(format: GPUTextureFormat) {
-     const shaderModule = this.device.createShaderModule({
-       code: `
-         struct ParticleInput {
-           @location(0) position: vec2<f32>,
-           @location(1) offset: vec2<f32>,
-           @location(2) health: f32,
-           @location(3) charge: f32,
-           @location(4) role: f32,
-         };
+  async init(format) {
+        const shaderModule = this.device.createShaderModule({ code: `
+      struct Params {
+        healthMax: f32,
+        chargeMax: f32,
+        baseSize: f32,
+        sizeScale: f32,
+        cameraX: f32,
+        cameraY: f32,
+        zoom: f32,
+        domainWidth: f32,
+        domainHeight: f32,
+      };
 
-        struct ParticleOutput {
-          @builtin(position) position: vec4<f32>,
-          @location(0) color: vec4<f32>,
-          @location(1) size: f32,
-        };
+      struct ParticleOutput {
+        @builtin(position) position: vec4<f32>,
+        @location(0) color: vec4<f32>,
+        @location(1) localPosition: vec2<f32>,
+      };
 
-         struct Params {
-           healthMax: f32,
-           chargeMax: f32,
-           baseSize: f32,
-           sizeScale: f32,
-             cameraX: f32,
-             cameraY: f32,
-             zoom: f32,
-             domainWidth: f32,
-             domainHeight: f32,
-         };
+      @group(0) @binding(0) var<uniform> params: Params;
+      @group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
+      @group(0) @binding(2) var<storage, read> health: array<f32>;
+      @group(0) @binding(3) var<storage, read> charge: array<f32>;
+      @group(0) @binding(4) var<storage, read> role: array<u32>;
 
-         @group(0) @binding(0) var<uniform> params: Params;
-
-         @vertex
-         fn vertexMain(input: ParticleInput) -> ParticleOutput {
-           let roleScale = select(1.0, 3.0, input.role > 0.5);
-           let pos = input.position + input.offset * roleScale;
-           let viewSize = vec2<f32>(params.domainWidth, params.domainHeight) / params.zoom;
-           let viewOrigin = vec2<f32>(params.cameraX, params.cameraY) - viewSize / 2.0;
-           let ndc = ((pos - viewOrigin) / viewSize) * 2.0 - vec2<f32>(1.0, 1.0);
-           let clipPos = vec4<f32>(ndc.x, -ndc.y, 0.0, 1.0);
-           var output: ParticleOutput;
-           output.position = clipPos;
-
-           // Map health to color (red to green)
-           let healthNorm = clamp(input.health / params.healthMax, 0.0, 1.0);
-           var color = mix(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), healthNorm);
-           if (input.role == 1.0) {
-             color = vec3<f32>(0.0, 0.9, 1.0);
-           } else if (input.role == 2.0) {
-             color = vec3<f32>(0.61, 0.36, 1.0);
-           }
-           output.color = vec4<f32>(color, 1.0);
-
-           // Map charge to size
-           output.size = params.baseSize + input.charge * params.sizeScale;
-
-           return output;
-         }
-
-        @fragment
-        fn fragmentMain(input: ParticleOutput) -> @location(0) vec4<f32> {
-          // Simple circle effect - fade out towards edges
-          // Simple output - gl_FragCoord is not available in WGSL
-          return vec4<f32>(input.color.rgb, 1.0);
+      // A six-vertex quad is used only as the rasterisation envelope.
+      // The fragment shader cuts it to an actual circle.
+      fn quad(vertexIndex: u32) -> vec2<f32> {
+        switch (vertexIndex) {
+          case 0u: { return vec2<f32>(-1.0, -1.0); }
+          case 1u: { return vec2<f32>( 1.0, -1.0); }
+          case 2u: { return vec2<f32>( 1.0,  1.0); }
+          case 3u: { return vec2<f32>(-1.0, -1.0); }
+          case 4u: { return vec2<f32>( 1.0,  1.0); }
+          default: { return vec2<f32>(-1.0,  1.0); }
         }
-       `
-     });
+      }
 
-     this.bindGroupLayout = this.device.createBindGroupLayout({
-       entries: [
-         {
-           binding: 0,
-           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-           buffer: { type: 'uniform' }
-         },
-         {
-           binding: 1,
-           visibility: GPUShaderStage.VERTEX,
-           buffer: { type: 'read-only-storage' }
-         },
-         {
-           binding: 2,
-           visibility: GPUShaderStage.VERTEX,
-           buffer: { type: 'read-only-storage' }
-         }
-       ]
-     });
+      
+      fn wrapCoordinate(value: f32, domainSize: f32) -> f32 {
+          return value - floor(value / domainSize) * domainSize;
+      }
 
-     this.pipeline = this.device.createRenderPipeline({
-       layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout!] }),
-       vertex: {
-         module: shaderModule,
-         entryPoint: 'vertexMain',
-         buffers: [
-           {
-             arrayStride: 16, // position (2 floats) + offset (2 floats) = 4 floats = 16 bytes
-             stepMode: 'vertex',
-             attributes: [
-               { shaderLocation: 0, offset: 0, format: 'float32x2' }, // position
-               { shaderLocation: 1, offset: 8, format: 'float32x2' }, // offset
-             ]
-           },
-           {
-             arrayStride: 12,
-             stepMode: 'instance',
-             attributes: [
-               { shaderLocation: 2, offset: 0, format: 'float32' }, // health
-               { shaderLocation: 3, offset: 4, format: 'float32' }, // charge
-               { shaderLocation: 4, offset: 8, format: 'float32' },
-             ]
-           }
-         ]
-       },
-       fragment: {
-         module: shaderModule,
-         entryPoint: 'fragmentMain',
-         targets: [{ format }]
-       },
-       primitive: { topology: 'triangle-list' },
-       depthStencil: undefined
-     });
-   }
+      @vertex
+      fn vertexMain(
+        @builtin(vertex_index) vertexIndex: u32,
+        @builtin(instance_index) particleIndex: u32,
+      ) -> ParticleOutput {
+        let local = quad(vertexIndex);
+        let particleRole = role[particleIndex];
 
-  setParticleData(positions: Float32Array, offsets: Float32Array, health: Float32Array, charge: Float32Array, role: Float32Array) {
-     // Interleave position and offset because both attributes share buffer 0.
-     const vertexData = new Float32Array(positions.length + offsets.length);
-     for (let i = 0; i < positions.length / 2; i++) {
-       vertexData[i * 4] = positions[i * 2];
-       vertexData[i * 4 + 1] = positions[i * 2 + 1];
-       vertexData[i * 4 + 2] = offsets[i * 2];
-       vertexData[i * 4 + 3] = offsets[i * 2 + 1];
-     }
-     if (!this.vertexBuffer || this.vertexBufferSize !== vertexData.byteLength) {
-       this.vertexBuffer?.destroy();
-       this.bindGroup?.destroy();
-       this.bindGroup = null;
-       this.vertexBuffer = this.device.createBuffer({
-         size: vertexData.byteLength,
-         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX
-       });
-      this.vertexBufferSize = vertexData.byteLength;
-     }
+        // Match worker.ts exactly:
+        //   internal -> radius 2
+        //   input/output -> radius 6
+        let radiusPx = select(2.0, 6.0, particleRole > 0u);
 
-     this.device.queue.writeBuffer(this.vertexBuffer, 0, vertexData);
+        // The render target is fixed at 800x600. Convert pixel radius to NDC.
+        let pixelToNdc = vec2<f32>(2.0 / 800.0, 2.0 / 600.0);
+        let halfExtentNdc = radiusPx * pixelToNdc;
 
-     // Interleave per-instance values so all attributes share one instance stride.
-     const instanceData = new Float32Array(health.length * 3);
-     for (let i = 0; i < health.length; i++) {
-       instanceData[i * 3] = health[i];
-       instanceData[i * 3 + 1] = charge[i];
-       instanceData[i * 3 + 2] = role[i];
-     }
+        let viewSize = vec2<f32>(params.domainWidth, params.domainHeight) / params.zoom;
+        let viewOrigin = vec2<f32>(params.cameraX, params.cameraY) - viewSize / 2.0;
 
-     // Update instance buffer with health, charge, and role.
-     if (!this.instanceBuffer || this.instanceBufferSize !== instanceData.byteLength) {
-       this.instanceBuffer?.destroy();
-       this.bindGroup?.destroy();
-       this.bindGroup = null;
-       this.instanceBuffer = this.device.createBuffer({
-         size: instanceData.byteLength,
-         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX
-       });
-      this.instanceBufferSize = instanceData.byteLength;
-     }
+        let relativePosition = vec2<f32>(
+            wrapCoordinate(
+                positions[particleIndex].x - viewOrigin.x,
+                params.domainWidth
+            ),
+            wrapCoordinate(
+                positions[particleIndex].y - viewOrigin.y,
+                params.domainHeight
+            )
+        );
 
-    this.device.queue.writeBuffer(this.instanceBuffer, 0, instanceData);
+        let ndc = (relativePosition / viewSize) * 2.0 - vec2<f32>(1.0, 1.0);
 
-     // The storage buffers must exist before the bind group is created.
-     this.createBindGroup();
-   }
+        var output: ParticleOutput;
+        output.position = vec4<f32>(
+          ndc.x + local.x * halfExtentNdc.x,
+          -ndc.y + local.y * halfExtentNdc.y,
+          0.0,
+          1.0
+        );
+        output.localPosition = local;
 
-   private createBindGroup() {
-     if (this.bindGroup || !this.bindGroupLayout || !this.uniformBuffer || !this.vertexBuffer || !this.instanceBuffer) return;
+        let healthNorm = clamp(health[particleIndex] / params.healthMax, 0.0, 1.0);
 
-     this.bindGroup = this.device.createBindGroup({
-       layout: this.bindGroupLayout,
-       entries: [
-         { binding: 0, resource: { buffer: this.uniformBuffer } },
-         { binding: 1, resource: { buffer: this.vertexBuffer } },
-         { binding: 2, resource: { buffer: this.instanceBuffer } }
-       ]
-     });
-   }
+        var color: vec3<f32>;
+        if (particleRole == 1u) {
+          // Canvas2D: #00e5ff
+          color = vec3<f32>(0.0, 229 / 255.0, 1.0);
+        } else if (particleRole == 2u) {
+          // Canvas2D: #9b5cff
+          color = vec3<f32>(155.0 / 255.0, 92.0 / 255.0, 1.0);
+        } else {
+          // Canvas2D computes integer RGB values with Math.round().
+          let red = floor(255.0 * (1.0 - healthNorm) + 0.5) / 255.0;
+          let green = floor(255.0 * healthNorm + 0.5) / 255.0;
+          color = vec3<f32>(red, green, 0.0);
+        }
 
-   setUniforms(
-     healthMax: number,
-     chargeMax: number,
-     baseSize: number,
-     sizeScale: number,
-     cameraX = 50,
-     cameraY = 50,
-     zoom = 1,
-     domainWidth = 100,
-     domainHeight = 100,
-   ) {
-     if (!this.uniformBuffer) {
-       this.uniformBuffer = this.device.createBuffer({
-         size: 12 * 4,
-         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-       });
-     }
+        output.color = vec4<f32>(color, 1.0);
+        return output;
+      }
 
-     this.createBindGroup();
+      @fragment
+      fn fragmentMain(input: ParticleOutput) -> @location(0) vec4<f32> {
+        // Turn the rasterised quad into a circle.
+        // This is intentionally hard-edged: the CPU renderer's visible
+        // particle extent is defined by the 2/6 px Canvas2D arc radius.
+        if (dot(input.localPosition, input.localPosition) > 1.0) {
+          discard;
+        }
+        return input.color;
+      }
+    ` });
 
-     const data = new Float32Array([
-       healthMax, chargeMax, baseSize, sizeScale,
-       cameraX, cameraY, zoom, domainWidth, domainHeight, 0, 0, 0,
-     ]);
-     this.device.queue.writeBuffer(this.uniformBuffer, 0, data);
-   }
+    this.bindGroupLayout = this.device.createBindGroupLayout({ entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+    ] });
 
-   render(commandEncoder: GPUCommandEncoder, textureView: GPUTextureView, particleCount: number) {
-     if (!this.pipeline) return;
+    this.pipeline = this.device.createRenderPipeline({
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
+      vertex: {
+        module: shaderModule,
+        entryPoint: 'vertexMain',
+      },
+      fragment: {
+        module: shaderModule,
+        entryPoint: 'fragmentMain',
+        targets: [{ format }],
+      },
+      primitive: {
+        topology: 'triangle-list',
+      },
+    });
+  }
 
-     const renderPass = commandEncoder.beginRenderPass({
-       colorAttachments: [{
-         view: textureView,
-         loadOp: 'clear',
-         storeOp: 'store',
-         clearValue: { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }
-       }]
-     });
+  /**
+   * Bind the simulation-owned GPU render state directly.
+   *
+   * This is intentionally a zero-copy hand-off: the renderer stores the GPU
+   * buffer handles and never receives a CPU particle array.
+   */
+  setParticleBuffers(state: RenderParticleState): void {
+    const { positions, health, charge, role, particleCount } = state;
+    const changed =
+      this.positionsBuffer !== positions ||
+      this.healthBuffer !== health ||
+      this.chargeBuffer !== charge ||
+      this.roleBuffer !== role ||
+      this.boundParticleCount !== particleCount;
 
-     renderPass.setPipeline(this.pipeline);
-    if (this.bindGroup) renderPass.setBindGroup(0, this.bindGroup);
-     renderPass.setVertexBuffer(0, this.vertexBuffer!);
-     renderPass.setVertexBuffer(1, this.instanceBuffer!);
-     renderPass.draw(6, particleCount); // 6 vertices per instance (quad)
-     renderPass.end();
-   }
+    this.positionsBuffer = positions;
+    this.healthBuffer = health;
+    this.chargeBuffer = charge;
+    this.roleBuffer = role;
+    this.boundParticleCount = particleCount;
 
-   destroy() {
-     this.vertexBuffer?.destroy();
-     this.instanceBuffer?.destroy();
-    this.vertexBufferSize = 0;
-    this.instanceBufferSize = 0;
+    if (changed) this.bindGroup = null;
+    this.createBindGroup();
+  }
+
+  setUniforms(
+    healthMax: number,
+    chargeMax: number,
+    baseSize: number,
+    sizeScale: number,
+    cameraX: number,
+    cameraY: number,
+    zoom: number,
+    domainWidth: number,
+    domainHeight: number,
+  ): void {
+    if (!this.uniformBuffer) {
+      this.uniformBuffer = this.device.createBuffer({
+        size: 12 * 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      this.bindGroup = null;
+    }
+
+    this.createBindGroup();
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, new Float32Array([
+      healthMax,
+      chargeMax,
+      baseSize,
+      sizeScale,
+      cameraX,
+      cameraY,
+      zoom,
+      domainWidth,
+      domainHeight,
+      0,
+      0,
+      0,
+    ]));
+  }
+
+  private createBindGroup(): void {
+    if (
+      this.bindGroup ||
+      !this.bindGroupLayout ||
+      !this.uniformBuffer ||
+      !this.positionsBuffer ||
+      !this.healthBuffer ||
+      !this.chargeBuffer ||
+      !this.roleBuffer
+    ) {
+      return;
+    }
+
+    this.bindGroup = this.device.createBindGroup({
+      layout: this.bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.positionsBuffer } },
+        { binding: 2, resource: { buffer: this.healthBuffer } },
+        { binding: 3, resource: { buffer: this.chargeBuffer } },
+        { binding: 4, resource: { buffer: this.roleBuffer } },
+      ],
+    });
+  }
+
+  /** Render the currently bound simulation state. */
+  render(
+    commandEncoder: GPUCommandEncoder,
+    textureView: GPUTextureView,
+    particleCount = this.boundParticleCount,
+  ): void {
+    if (!this.pipeline || !this.bindGroup) return;
+
+    const renderPass = commandEncoder.beginRenderPass({
+      colorAttachments: [{
+        view: textureView,
+        loadOp: 'clear',
+        storeOp: 'store',
+        // CPU renderer clears to pure black.
+        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+      }],
+    });
+
+    renderPass.setPipeline(this.pipeline);
+    renderPass.setBindGroup(0, this.bindGroup);
+    renderPass.draw(6, particleCount);
+    renderPass.end();
+  }
+
+  destroy(): void {
     this.uniformBuffer?.destroy();
-     this.pipeline?.destroy();
-     this.bindGroupLayout?.destroy();
-     this.bindGroup?.destroy();
-   }
- }
+    this.pipeline?.destroy();
+    this.bindGroupLayout?.destroy();
+    this.bindGroup = null;
+    this.uniformBuffer = null;
+    this.pipeline = null;
+    this.bindGroupLayout = null;
+    this.positionsBuffer = null;
+    this.healthBuffer = null;
+    this.chargeBuffer = null;
+    this.roleBuffer = null;
+  }
+}

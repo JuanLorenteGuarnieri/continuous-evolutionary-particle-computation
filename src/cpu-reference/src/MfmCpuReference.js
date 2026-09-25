@@ -2,6 +2,33 @@ import { ParticleState, PopulationState } from '@cepc/shared-config';
 import { XorShift32 } from './prng.js';
 import { periodicDelta, periodicDistance, wrap } from './vector2d.js';
 const EPSILON = 1e-6;
+let DEBUG_MFM_CPU_PROFILING = false;
+const cpuProfileStats = new Map();
+function setMfmCpuProfilingEnabled(enabled) {
+    DEBUG_MFM_CPU_PROFILING = enabled;
+    if (!enabled)
+        cpuProfileStats.clear();
+}
+function cpuProfileRecord(label, elapsedMs) {
+    if (!DEBUG_MFM_CPU_PROFILING)
+        return;
+    const current = cpuProfileStats.get(label) ?? { total: 0, count: 0, min: Infinity, max: -Infinity };
+    current.total += elapsedMs;
+    current.count += 1;
+    current.min = Math.min(current.min, elapsedMs);
+    current.max = Math.max(current.max, elapsedMs);
+    cpuProfileStats.set(label, current);
+}
+function cpuProfileFlush(timestep, particleCount) {
+    if (!DEBUG_MFM_CPU_PROFILING || timestep % 30 !== 0)
+        return;
+    const summary = {};
+    for (const [label, value] of cpuProfileStats) {
+        summary[label] = { avg: value.total / value.count, min: value.min, max: value.max, samples: value.count };
+    }
+    console.log('[CEPC][MfmCPU][profiling]', { timestep, particleCount, summary });
+    cpuProfileStats.clear();
+}
 export class MfmCpuReference {
     config;
     population;
@@ -20,6 +47,9 @@ export class MfmCpuReference {
     getPopulation() { return this.population; }
     setConfig(config) { this.config = config; }
     setPopulation(population) { this.population = population; }
+    setProfilingEnabled(enabled) {
+        setMfmCpuProfilingEnabled(enabled);
+    }
     injectInput(value) {
         this.pendingInputSignal = Math.max(0, Math.min(1, value));
     }
@@ -27,13 +57,17 @@ export class MfmCpuReference {
         this.pendingError = Math.max(0, Math.min(1, error));
     }
     step() {
+        const stepStart = performance.now();
+        const snapshotStart = performance.now();
         const snapshot = this.takeSnapshot();
+        cpuProfileRecord('cpu.snapshot', performance.now() - snapshotStart);
         const inputMap = this.buildInputMap(snapshot);
         const nextCharges = new Map();
         const nextSenders = new Map();
         const events = new Map();
         const nextStates = new Map();
         const nextGenomes = new Map();
+        const evolutionStart = performance.now();
         for (const item of snapshot) {
             const { id, state, genome } = item;
             const receivedCharge = this.incomingChargeMap.get(id) ?? 0;
@@ -96,6 +130,9 @@ export class MfmCpuReference {
         this.incomingChargeMap = nextCharges;
         this.incomingSendersMap = nextSenders;
         this.timestep++;
+        cpuProfileRecord('cpu.evolution+reproduction', performance.now() - evolutionStart);
+        cpuProfileRecord('cpu.step.total', performance.now() - stepStart);
+        cpuProfileFlush(this.timestep, snapshot.length);
         return nextPopulation;
     }
     run(steps) {

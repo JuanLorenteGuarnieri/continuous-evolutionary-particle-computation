@@ -134,7 +134,7 @@ export class MetricsReducer {
        size: resultSize,
        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
      });
-     commandEncoder.copyBuffer(this.resultBuffer, 0, stagingBuffer, 0, resultSize);
+     commandEncoder.copyBufferToBuffer(this.resultBuffer, 0, stagingBuffer, 0, resultSize);
 
      const gpuAsync = this.device.queue.submit([commandEncoder.finish()]);
      await gpuAsync;

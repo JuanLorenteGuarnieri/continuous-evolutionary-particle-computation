@@ -1,3 +1,4 @@
+const DEBUG_PROFILING = false;
 /// <reference types="vite/client" />
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -260,24 +261,48 @@ function App() {
             window.removeEventListener('mouseout', handleWindowPointerLeave);
         };
     }, []);
-    const handleCanvasWheel = (event) => {
-        event.preventDefault();
-        const delta = event.deltaY < 0 ? 1 : -1;
-        if (grabbingRef.current) {
-            grabRangeRef.current = Math.max(0.005, Math.min(0.5, grabRangeRef.current + delta * 0.01));
-            workerRef.current?.postMessage({ type: 'grabRange', payload: { delta: delta * 0.01 } });
-        }
-        else {
-            workerRef.current?.postMessage({ type: 'cameraZoom', payload: { delta } });
-        }
-    };
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas)
+            return;
+        const handleWheel = (event) => {
+            event.preventDefault();
+            const delta = event.deltaY < 0 ? 1 : -1;
+            if (grabbingRef.current) {
+                grabRangeRef.current = Math.max(0.005, Math.min(0.5, grabRangeRef.current + delta * 0.01));
+                workerRef.current?.postMessage({
+                    type: 'grabRange',
+                    payload: {
+                        delta: delta * 0.01,
+                    },
+                });
+            }
+            else {
+                workerRef.current?.postMessage({
+                    type: 'cameraZoom',
+                    payload: {
+                        delta,
+                    },
+                });
+            }
+        };
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+        return () => {
+            canvas.removeEventListener('wheel', handleWheel);
+        };
+    }, []);
     /**
      * Initialize the worker once.
      */
     useEffect(() => {
         if (!canvasRef.current)
             return;
+        // Keep rendering contexts isolated: an OffscreenCanvas can only own one
+        // context type. WebGPU and CPU/2D rendering therefore use separate
+        // OffscreenCanvas instances, allowing backend switching without losing
+        // the WebGPU context.
         const offscreen = new OffscreenCanvas(800, 600);
+        const webgpuCanvas = new OffscreenCanvas(800, 600);
         const worker = new Worker(new URL('@worker', import.meta.url), { type: 'module' });
         worker.onerror = (e) => {
             console.error('Worker error:', e);
@@ -317,8 +342,9 @@ function App() {
         worker.postMessage({
             type: 'init',
             offscreen,
+            webgpuCanvas,
             config,
-        }, [offscreen]);
+        }, [offscreen, webgpuCanvas]);
         worker.postMessage({
             type: 'setBackend',
             payload: { backend: selectedBackend },
@@ -461,6 +487,7 @@ function App() {
      * Draw a received ImageBitmap on the visible canvas.
      */
     const handleFrame = (bitmap) => {
+        const profileStart = performance.now();
         const canvas = canvasRef.current;
         if (!canvas) {
             bitmap.close();
@@ -483,6 +510,9 @@ function App() {
         const dy = (ch - dh) / 2;
         ctx.drawImage(bitmap, dx, dy, dw, dh);
         bitmap.close();
+        if (DEBUG_PROFILING) {
+            console.log('[CEPC][main][profiling] handleFrame', { elapsedMs: performance.now() - profileStart, bitmapWidth: bw, bitmapHeight: bh });
+        }
     };
     /**
      * Send a configuration update to the worker.
@@ -643,7 +673,7 @@ function App() {
         .cepc-scroll::-webkit-scrollbar-thumb { background: rgba(122, 162, 255, 0.75); border-radius: 8px; }
       `}</style>
       {/* Simulation canvas */}
-      <canvas ref={canvasRef} onMouseMove={handlePointerMove} onWheel={handleCanvasWheel} onContextMenu={(event) => event.preventDefault()} style={{
+      <canvas ref={canvasRef} onMouseMove={handlePointerMove} onContextMenu={(event) => event.preventDefault()} style={{
             position: 'absolute',
             inset: 0,
             width: '100vw',

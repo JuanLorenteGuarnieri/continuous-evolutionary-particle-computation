@@ -3,6 +3,34 @@ import { XorShift32 } from './prng.js';
 import { periodicDelta, periodicDistance, wrap } from './vector2d.js';
 const EPSILON = 1e-6;
 
+let DEBUG_MFM_CPU_PROFILING = false;
+const cpuProfileStats = new Map<string, { total: number; count: number; min: number; max: number }>();
+
+function setMfmCpuProfilingEnabled(enabled: boolean): void {
+  DEBUG_MFM_CPU_PROFILING = enabled;
+  if (!enabled) cpuProfileStats.clear();
+}
+
+function cpuProfileRecord(label: string, elapsedMs: number): void {
+  if (!DEBUG_MFM_CPU_PROFILING) return;
+  const current = cpuProfileStats.get(label) ?? { total: 0, count: 0, min: Infinity, max: -Infinity };
+  current.total += elapsedMs;
+  current.count += 1;
+  current.min = Math.min(current.min, elapsedMs);
+  current.max = Math.max(current.max, elapsedMs);
+  cpuProfileStats.set(label, current);
+}
+
+function cpuProfileFlush(timestep: number, particleCount: number): void {
+  if (!DEBUG_MFM_CPU_PROFILING || timestep % 30 !== 0) return;
+  const summary: Record<string, { avg: number; min: number; max: number; samples: number }> = {};
+  for (const [label, value] of cpuProfileStats) {
+    summary[label] = { avg: value.total / value.count, min: value.min, max: value.max, samples: value.count };
+  }
+  console.log('[CEPC][MfmCPU][profiling]', { timestep, particleCount, summary });
+  cpuProfileStats.clear();
+}
+
 type Snapshot = { id: string; state: ParticleState; genome: Genome };
 type Event = { success: boolean; targets: Set<string> };
 
@@ -27,6 +55,10 @@ export class MfmCpuReference {
   public setConfig(config: MFMConfig): void { this.config = config; }
   public setPopulation(population: PopulationState): void { this.population = population; }
 
+  public setProfilingEnabled(enabled: boolean): void {
+    setMfmCpuProfilingEnabled(enabled);
+  }
+
   public injectInput(value: number): void {
     this.pendingInputSignal = Math.max(0, Math.min(1, value));
   }
@@ -36,7 +68,10 @@ export class MfmCpuReference {
   }
 
   public step(): PopulationState {
+    const stepStart = performance.now();
+    const snapshotStart = performance.now();
     const snapshot = this.takeSnapshot();
+    cpuProfileRecord('cpu.snapshot', performance.now() - snapshotStart);
     const inputMap = this.buildInputMap(snapshot);
     const nextCharges = new Map<string, number>();
     const nextSenders = new Map<string, Set<string>>();
@@ -44,6 +79,7 @@ export class MfmCpuReference {
     const nextStates = new Map<string, ParticleState>();
     const nextGenomes = new Map<string, Genome>();
 
+    const evolutionStart = performance.now();
     for (const item of snapshot) {
       const { id, state, genome } = item;
       const receivedCharge = this.incomingChargeMap.get(id) ?? 0;
@@ -110,6 +146,9 @@ export class MfmCpuReference {
     this.incomingChargeMap = nextCharges;
     this.incomingSendersMap = nextSenders;
     this.timestep++;
+    cpuProfileRecord('cpu.evolution+reproduction', performance.now() - evolutionStart);
+    cpuProfileRecord('cpu.step.total', performance.now() - stepStart);
+    cpuProfileFlush(this.timestep, snapshot.length);
     return nextPopulation;
   }
 
@@ -249,7 +288,7 @@ forceY += forceFactor * delta.y;
         position: (() => {
             const baseX = (first.state.position.x + second.state.position.x) / 2;
             const baseY = (first.state.position.y + second.state.position.y) / 2;
-            // Add perturbation: ±1% of domain size
+            // Add perturbation: ï¿½1% of domain size
             const perturbationX = (this.rng.nextFloat() - 0.5) * 2 * this.config.Lx * 0.01;
             const perturbationY = (this.rng.nextFloat() - 0.5) * 2 * this.config.Ly * 0.01;
             return wrap({ x: baseX + perturbationX, y: baseY + perturbationY }, this.config.Lx, this.config.Ly);
@@ -257,7 +296,7 @@ forceY += forceFactor * delta.y;
         velocity: (() => {
             const baseVx = (first.state.velocity.x + second.state.velocity.x) / 2;
             const baseVy = (first.state.velocity.y + second.state.velocity.y) / 2;
-            // Add perturbation: ±0.01 in each component
+            // Add perturbation: ï¿½0.01 in each component
             const perturbationVx = (this.rng.nextFloat() - 0.5) * 2 * 0.01;
             const perturbationVy = (this.rng.nextFloat() - 0.5) * 2 * 0.01;
             return { x: baseVx + perturbationVx, y: baseVy + perturbationVy };

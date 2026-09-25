@@ -19,9 +19,8 @@ const EPSILON = 1e-6;
 const ROLE_INTERNAL = 0;
 const ROLE_INPUT = 1;
 const ROLE_OUTPUT = 2;
-const SENTINEL = 0xffffffff;
 const UINT32_MAX = 0xffffffff;
-const UNIFORM_BUFFER_SIZE = 96;
+const UNIFORM_BUFFER_SIZE = 112;
 const UNIFORM_DYNAMIC_STRIDE = 256;
 const MAX_GRID_CELLS = 262_144;
 const WORKGROUP_SIZE = 128;
@@ -64,9 +63,6 @@ class XorShift32 {
         this.state = (state >>> 0) || 0x6d2b79f5;
     }
 }
-/**
- * A complete WebGPU MFM v3 stepper with CPU-assisted population evolution.
- */
 export class MfmWebGPUStepper {
     device;
     config;
@@ -82,6 +78,8 @@ export class MfmWebGPUStepper {
     /** Slot mapping. ParticleID is persistent; slotIndex is purely physical. */
     slotToId = [];
     idToSlot = new Map();
+    /** Reusable CPU snapshot scratch. Entries are mutated/reused every timestep. */
+    snapshotScratch = [];
     particleIdHashes = new Uint32Array(0);
     capacity = 1;
     particleCount = 0;
@@ -97,6 +95,8 @@ export class MfmWebGPUStepper {
      * This prevents shared staging buffers from being mapped by overlapping steps.
      */
     stepInFlight = null;
+    /** True from encodeStep() until its finishNormalSync() has completed. */
+    encodedStepPending = false;
     /** Ping-pong state buffers. stateIndex is the read/current state. */
     stateIndex = 0;
     positionBuffers = [null, null];
@@ -136,9 +136,27 @@ export class MfmWebGPUStepper {
     selectedTargetsBuffer;
     selectedCountBuffer;
     forceBuffer;
+    /** Single GPU-resident pressure value computed from P_n/Q_n each step. */
+    pressureBuffer;
     paramsBuffer;
-    /** Single packed staging buffer used for the GPU -> CPU readback. */
-    stagingReadback;
+    /** Persistent GPU -> CPU readback staging buffers.
+     *
+     * Normal sync is intentionally only health (4 B/particle); charge is GPU-authoritative.
+     * Position/velocity remain GPU-authoritative and are read back only for an
+     * exceptional full sync or when reproduction needs the current pre-step
+     * geometry.
+     */
+    fullStateReadback;
+    reproductionStateReadback;
+    reproductionCandidateBuffer;
+    reproductionCandidateSlotBuffer;
+    reproductionCandidateCountBuffer;
+    /** Compact GPU slots whose post-step health reaches the population death event. */
+    deathCandidateSlotBuffer;
+    deathCandidateCountBuffer;
+    genomeMateHealthThresholdBuffer;
+    eventCountReadback;
+    eventDataReadback;
     /** Compute pipelines. */
     gridClearPipeline;
     gridBuildPipeline;
@@ -147,10 +165,13 @@ export class MfmWebGPUStepper {
     communicationSelectPipeline;
     communicationTransmitPipeline;
     localSuccessPipeline;
+    pressurePipeline;
     healthUpdatePipeline;
     forcePipeline;
     forceAllPairsPipeline;
     mechanicsPipeline;
+    reproductionCompactionPipeline;
+    deathCompactionPipeline;
     constructor(device, config, population, seed) {
         this.device = device;
         this.config = config;
@@ -165,7 +186,10 @@ export class MfmWebGPUStepper {
         await this.recreateGpuBuffers(true);
         this.initialized = true;
     }
-    getReadbackLayout() {
+    getReproductionReadbackLayout() {
+        return { totalBytes: Math.max(4, this.capacity * 16) };
+    }
+    getFullReadbackLayout() {
         let offset = 0;
         const positions = offset;
         offset += this.capacity * 8;
@@ -175,28 +199,7 @@ export class MfmWebGPUStepper {
         offset += this.capacity * 4;
         const charges = offset;
         offset += this.capacity * 4;
-        const qOut = offset;
-        offset += this.capacity * 4;
-        const active = offset;
-        offset += this.capacity * 4;
-        const successful = offset;
-        offset += this.capacity * 4;
-        const selectedCounts = offset;
-        offset += this.capacity * 4;
-        const selectedTargets = offset;
-        offset += this.capacity * Math.max(1, this.maxK) * 4;
-        return {
-            positions,
-            velocities,
-            healths,
-            charges,
-            qOut,
-            active,
-            successful,
-            selectedCounts,
-            selectedTargets,
-            totalBytes: offset,
-        };
+        return { positions, velocities, healths, charges, totalBytes: offset };
     }
     getConfig() {
         return this.config;
@@ -209,33 +212,184 @@ export class MfmWebGPUStepper {
         this.validateConfiguration();
         this.populationDirty = true;
     }
-    setPopulation(population) {
-        this.population = population;
-        this.populationDirty = true;
-    }
-    /** Queue a normalized scalar input for the next timestep. */
     injectInput(value) {
-        this.pendingInputSignal = this.clamp(value, 0, 1);
+        this.pendingInputSignal = Math.max(0, Math.min(1, value));
     }
-    /** Queue a normalized global error for the next timestep. */
     setGlobalError(error) {
-        this.pendingError = this.clamp(error, 0, 1);
+        this.pendingError = Math.max(0, Math.min(1, error));
     }
-    /** Execute one complete MFM v3 transition. */
+    /** Execute one complete MFM v3 transition using its own command submission. */
     async stepUnsafe() {
+        const commandEncoder = this.device.createCommandEncoder({
+            label: `mfm-v3-step-${this.timestep}`,
+        });
+        const encoded = await this.prepareEncodedStep(commandEncoder);
+        this.device.queue.submit([commandEncoder.finish()]);
+        return encoded.finishNormalSync();
+    }
+    /**
+     * Encode the complete GPU portion of one MFM timestep into a caller-owned
+     * command encoder. No queue submission is performed here.
+     *
+     * The returned render state points at the write-side state buffers produced
+     * by this timestep, so a render pass may be encoded after the compute passes
+     * in the same command buffer.
+     */
+    /** Return the current GPU state buffers for direct rendering. */
+    getRenderState() {
+        return {
+            positions: this.positionBuffers[this.stateIndex],
+            health: this.healthBuffers[this.stateIndex],
+            charge: this.chargeBuffers[this.stateIndex],
+            role: this.roleBuffer,
+            particleCount: this.particleCount,
+        };
+    }
+    /**
+     * Read the authoritative GPU charge state for presentation/metrics only.
+     *
+     * Charge is stored as Uint32 on the GPU (Phase 5F), so metrics must not
+     * reinterpret that storage as f32. This is intentionally a narrow 4 B/particle
+     * readback and does not synchronize PopulationState or positions/velocities.
+     */
+    async readChargeMetrics() {
+        if (!this.initialized || this.particleCount <= 0) {
+            return { totalCharge: 0, inputCharge: 0, outputCharge: 0 };
+        }
+        const bytes = this.particleCount * 4;
+        const encoder = this.device.createCommandEncoder({ label: 'mfm-charge-metrics-readback' });
+        encoder.copyBufferToBuffer(this.chargeBuffers[this.stateIndex], 0, this.reproductionStateReadback, 0, bytes);
+        this.device.queue.submit([encoder.finish()]);
+        await this.reproductionStateReadback.mapAsync(MAP_MODE_READ);
+        try {
+            const charges = new Uint32Array(this.reproductionStateReadback.getMappedRange().slice(0, bytes));
+            let totalCharge = 0;
+            let inputCharge = 0;
+            let outputCharge = 0;
+            for (let i = 0; i < this.particleCount; i++) {
+                const charge = charges[i] >>> 0;
+                totalCharge += charge;
+                const role = this.population.particles.get(this.slotToId[i])?.role;
+                if (role === 'input')
+                    inputCharge += charge;
+                else if (role === 'output')
+                    outputCharge += charge;
+            }
+            return { totalCharge, inputCharge, outputCharge };
+        }
+        finally {
+            this.reproductionStateReadback.unmap();
+        }
+    }
+    async encodeStep(commandEncoder) {
+        if (this.stepInFlight || this.encodedStepPending) {
+            throw new Error('Cannot encode a WebGPU step while another step is in flight');
+        }
+        // Reserve the step before the first await in prepareEncodedStep(). Worker
+        // messages are independently asynchronous, so an inspect/grab/backend
+        // message can arrive while the render path is waiting for GPU completion.
+        // The reservation makes exceptional sync wait for the encoded step instead
+        // of mapping one of its staging buffers concurrently.
+        this.encodedStepPending = true;
+        let resolveStep;
+        let rejectStep;
+        const trackedStep = new Promise((resolve, reject) => {
+            resolveStep = resolve;
+            rejectStep = reject;
+        });
+        this.stepInFlight = trackedStep;
+        try {
+            const encoded = await this.prepareEncodedStep(commandEncoder);
+            let finishPromise = null;
+            const finishNormalSync = () => {
+                // An EncodedStep may be observed by more than one worker-side path.
+                // Mapping a GPUBuffer twice before unmap() is illegal in WebGPU, so make
+                // completion idempotent and share the same promise with every caller.
+                if (!finishPromise) {
+                    finishPromise = encoded.finishNormalSync();
+                    finishPromise.then((value) => {
+                        this.encodedStepPending = false;
+                        if (this.stepInFlight === trackedStep)
+                            this.stepInFlight = null;
+                        resolveStep(value);
+                    }, (error) => {
+                        this.encodedStepPending = false;
+                        if (this.stepInFlight === trackedStep)
+                            this.stepInFlight = null;
+                        rejectStep(error);
+                    });
+                }
+                return finishPromise;
+            };
+            return {
+                renderState: {
+                    positions: this.positionBuffers[encoded.stateWrite],
+                    health: this.healthBuffers[encoded.stateWrite],
+                    charge: this.chargeBuffers[encoded.stateWrite],
+                    role: this.roleBuffer,
+                    particleCount: this.particleCount,
+                },
+                finishNormalSync,
+                finish: finishNormalSync,
+            };
+        }
+        catch (error) {
+            this.encodedStepPending = false;
+            if (this.stepInFlight === trackedStep)
+                this.stepInFlight = null;
+            rejectStep(error);
+            throw error;
+        }
+    }
+    async prepareEncodedStep(commandEncoder) {
         if (!this.initialized) {
             await this.init();
         }
         this.validateConfiguration();
         if (this.populationDirty) {
+            // Phase 5F: charge is GPU-authoritative. A configuration change can
+            // recreate buffers, so first capture the current GPU dynamic state into
+            // PopulationState; otherwise uploadPopulationToGpu() would re-seed the
+            // new charge buffers from the intentionally stale CPU charge mirror.
+            if (this.initialized && this.particleCount > 0) {
+                await this.syncFullCpuStateForSnapshot(this.takeSnapshot());
+            }
             await this.recreateGpuBuffers(false);
             this.populationDirty = false;
         }
-        this.refreshCpuSlotMapping();
+        // Phase 4.2: the CPU slot mapping is persistent. It is rebuilt only when
+        // topology changes or when the whole PopulationState is replaced.
         this.ensurePopulationFitsCapacity();
         if (this.particleCount === 0) {
-            this.timestep++;
-            return this.population;
+            const emptyInputSignal = this.pendingInputSignal ?? 0;
+            // CPU reference consumes one-shot external input/error even when the
+            // current population is empty. Keep the GPU path temporally identical.
+            this.pendingInputSignal = null;
+            this.pendingError = null;
+            return {
+                stateWrite: this.stateIndex,
+                incomingWrite: this.incomingIndex,
+                eventWrite: this.eventIndex,
+                snapshot: [],
+                inputSignal: emptyInputSignal,
+                inputSlot: -1,
+                previousIncomingCharges: new Map(this.incomingChargeMap),
+                previousIncomingSenders: new Map(),
+                // The empty-population fast path cannot produce reproduction candidates.
+                reproductionCompactionEnabled: false,
+                finishNormalSync: (() => {
+                    let finishPromise = null;
+                    return () => {
+                        if (!finishPromise) {
+                            finishPromise = Promise.resolve(this.population).then((population) => {
+                                this.timestep++;
+                                return population;
+                            });
+                        }
+                        return finishPromise;
+                    };
+                })(),
+            };
         }
         const snapshot = this.takeSnapshot();
         const inputSignal = this.pendingInputSignal ?? 0;
@@ -245,27 +399,28 @@ export class MfmWebGPUStepper {
         for (const [id, senders] of this.incomingSendersMap) {
             previousIncomingSenders.set(id, new Set(senders));
         }
-        // The CPU reference computes pressure from the current snapshot (before
-        // current-timestep GPU processing) and then clears the pending error.
-        const pressure = this.computePressure(snapshot);
+        // Phase 5F: pressure is now computed on the GPU from Q_n and role.
+        // globalPressure carries an explicit error override when set; -1 means
+        // "derive error from output charge". This preserves the CPU reference
+        // temporal semantics while removing the O(N) charge readback.
+        const pressureOverride = this.pendingError;
+        this.pendingError = null;
         this.pendingInputSignal = null;
+        const pressureInput = pressureOverride ?? -1;
         this.writeParams(0, {
             inputSignal,
             inputSlot,
-            globalPressure: pressure,
+            globalPressure: pressureInput,
             rank: 0,
         });
         for (let rank = 0; rank < this.maxK; rank++) {
             this.writeParams((rank + 1) * UNIFORM_DYNAMIC_STRIDE, {
                 inputSignal,
                 inputSlot,
-                globalPressure: pressure,
+                globalPressure: pressureInput,
                 rank,
             });
         }
-        const commandEncoder = this.device.createCommandEncoder({
-            label: `mfm-v3-step-${this.timestep}`,
-        });
         const stateRead = this.stateIndex;
         const stateWrite = 1 - stateRead;
         const incomingRead = this.incomingIndex;
@@ -288,6 +443,10 @@ export class MfmWebGPUStepper {
         // -----------------------------------------------------------------------
         this.dispatchCompute(commandEncoder, this.chargeProcessPipeline, this.createChargeProcessBindGroup(stateRead, incomingRead));
         this.dispatchCompute(commandEncoder, this.chargeFinalizePipeline, this.createChargeFinalizeBindGroup(stateWrite));
+        // Phase 5F: compute global pressure entirely on the GPU from the pre-step
+        // charge snapshot Q_n. This pass deliberately reads stateRead rather than
+        // stateWrite, matching MfmCpuReference.computePressure(snapshot).
+        this.dispatchCompute(commandEncoder, this.pressurePipeline, this.createPressureBindGroup(stateRead), 0, 1);
         // -----------------------------------------------------------------------
         // Phase 3 — Communication target selection, without replacement.
         // Each selection rank is a separate dispatch. The previous ranks have
@@ -326,104 +485,238 @@ export class MfmWebGPUStepper {
         // Phase 7 — Semi-implicit Euler mechanics.
         // -----------------------------------------------------------------------
         this.dispatchCompute(commandEncoder, this.mechanicsPipeline, this.createMechanicsBindGroup(stateRead, stateWrite));
-        const readbackLayout = this.getReadbackLayout();
-        commandEncoder.copyBufferToBuffer(this.positionBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.positions, this.particleCount * 8);
-        commandEncoder.copyBufferToBuffer(this.velocityBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.velocities, this.particleCount * 8);
-        commandEncoder.copyBufferToBuffer(this.healthBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.healths, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.chargeBuffers[stateWrite], 0, this.stagingReadback, readbackLayout.charges, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.qOutBuffer, 0, this.stagingReadback, readbackLayout.qOut, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.activeBuffer, 0, this.stagingReadback, readbackLayout.active, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.successfulBuffer, 0, this.stagingReadback, readbackLayout.successful, this.particleCount * 4);
-        commandEncoder.copyBufferToBuffer(this.selectedCountBuffer, 0, this.stagingReadback, readbackLayout.selectedCounts, this.particleCount * 4);
-        if (this.maxK > 0) {
-            commandEncoder.copyBufferToBuffer(this.selectedTargetsBuffer, 0, this.stagingReadback, readbackLayout.selectedTargets, this.particleCount * this.maxK * 4);
+        // Phase 5G: health is GPU-authoritative. Population events are compacted
+        // on GPU and only their small slot lists are read back. This removes the
+        // O(N) health readback from the normal timestep.
+        const reproductionCompactionEnabled = this.config.mating_probability > 0 && this.particleCount < this.config.Nmax;
+        commandEncoder.clearBuffer(this.deathCandidateCountBuffer);
+        this.dispatchCompute(commandEncoder, this.deathCompactionPipeline, this.createDeathCompactionBindGroup(stateWrite), 0, 1);
+        if (reproductionCompactionEnabled) {
+            commandEncoder.clearBuffer(this.reproductionCandidateCountBuffer);
+            this.dispatchCompute(commandEncoder, this.reproductionCompactionPipeline, this.createReproductionCompactionBindGroup(stateRead, stateWrite), 0, 1);
         }
-        this.device.queue.submit([commandEncoder.finish()]);
-        const readback = await this.readbackResults();
-        // The GPU writes now represent P_{n+1} for surviving current particles.
-        this.stateIndex = stateWrite;
-        this.incomingIndex = incomingWrite;
-        this.eventIndex = eventWrite;
-        // Build exact current-step event maps from the GPU selection result.
-        const nextIncomingCharges = new Map();
-        const nextIncomingSenders = new Map();
-        const events = new Map();
-        for (let i = 0; i < this.particleCount; i++) {
-            const senderId = this.slotToId[i];
-            const receivedCharge = previousIncomingCharges.get(senderId) ?? 0;
-            const receivedFromInput = i === inputSlot && inputSignal > 0;
-            const active = readback.active[i] !== 0;
-            const targets = new Set();
-            const selectedCount = Math.min(readback.selectedCounts[i] ?? 0, this.maxK, Math.max(0, Math.floor(snapshot[i].genome.K)));
-            if (this.maxK > 0) {
-                const rowBase = i * this.maxK;
-                for (let rank = 0; rank < selectedCount; rank++) {
-                    const targetSlot = readback.selectedTargets[rowBase + rank];
-                    if (targetSlot === SENTINEL || targetSlot >= this.particleCount)
-                        continue;
-                    const targetId = this.slotToId[targetSlot];
-                    targets.add(targetId);
-                    const amount = readback.qOut[i] >>> 0;
-                    nextIncomingCharges.set(targetId, (nextIncomingCharges.get(targetId) ?? 0) + amount);
-                    const senders = nextIncomingSenders.get(targetId) ?? new Set();
-                    senders.add(senderId);
-                    nextIncomingSenders.set(targetId, senders);
-                }
-            }
-            events.set(senderId, {
-                success: (receivedCharge > 0 || receivedFromInput) && active && selectedCount > 0,
-                targets,
-            });
-        }
-        // -----------------------------------------------------------------------
-        // Phase 8 — Population dynamics. Death/reproduction remains on CPU so the
-        // public PopulationState and logical ParticleID map remain straightforward.
-        // -----------------------------------------------------------------------
-        const nextStates = new Map();
-        const nextGenomes = new Map();
-        for (let i = 0; i < snapshot.length; i++) {
-            const item = snapshot[i];
-            const nextHealth = readback.healths[i];
-            const protectedParticle = item.state.role !== 'internal';
-            if (!protectedParticle && nextHealth <= 0) {
-                continue;
-            }
-            const nextState = new ParticleState({
-                version: item.state.version,
-                position: {
-                    x: readback.positions[i * 2],
-                    y: readback.positions[i * 2 + 1],
-                },
-                velocity: {
-                    x: protectedParticle ? 0 : readback.velocities[i * 2],
-                    y: protectedParticle ? 0 : readback.velocities[i * 2 + 1],
-                },
-                health: protectedParticle ? item.state.health : nextHealth,
-                charge: readback.charges[i],
-                senderSet: new Set(nextIncomingSenders.get(item.id) ?? []),
-                prevSenderSet: new Set(previousIncomingSenders.get(item.id) ?? []),
-                role: item.state.role,
-            });
-            nextStates.set(item.id, nextState);
-            nextGenomes.set(item.id, item.genome.clone());
-        }
-        this.addOffspring(snapshot, nextStates, nextGenomes, events);
-        const nextPopulation = new PopulationState();
-        for (const [id, state] of nextStates) {
-            const genome = nextGenomes.get(id);
-            if (genome)
-                nextPopulation.addParticle(id, genome, state);
-        }
-        this.population = nextPopulation;
-        this.incomingChargeMap = nextIncomingCharges;
-        this.incomingSendersMap = nextIncomingSenders;
-        const previousParticleIds = new Set(snapshot.map((item) => item.id));
-        const populationStructureChanged = nextPopulation.particles.size !== snapshot.length ||
-            Array.from(nextPopulation.particles.keys()).some((id) => !previousParticleIds.has(id));
-        this.refreshCpuSlotMapping();
-        await this.resyncAfterPopulationStep(populationStructureChanged);
-        this.timestep++;
-        return this.population;
+        // Phase 5G: NORMAL synchronization has no per-particle dynamic-state
+        // readback. Death/reproduction slot lists are consumed below as compact
+        // population-event data.
+        // Phase 5E: the event count is copied in the same command submission as
+        // the normal evolution readback. The CPU only needs the count to decide
+        // whether a second, compact event-data copy is necessary. Keeping this
+        // copy here removes an otherwise unconditional extra queue submission +
+        // GPU completion wait from event-producing timesteps, without changing
+        // which event records are read back.
+        commandEncoder.copyBufferToBuffer(this.senderCountBuffers[eventWrite], 0, this.eventCountReadback, 0, 4);
+        let finishPromise = null;
+        return {
+            stateWrite,
+            incomingWrite,
+            eventWrite,
+            snapshot,
+            inputSignal,
+            inputSlot,
+            previousIncomingCharges,
+            previousIncomingSenders,
+            reproductionCompactionEnabled,
+            finishNormalSync: () => {
+                if (finishPromise)
+                    return finishPromise;
+                finishPromise = (async () => {
+                    // Phase 5G: read only compact population-event data. No health array
+                    // is mapped back to the CPU during a normal timestep.
+                    let reproductionGeometry = new Float32Array(0);
+                    let reproductionCandidateSlots = new Uint32Array(0);
+                    let deathCandidateSlots = new Uint32Array(0);
+                    const readCompactCount = async (buffer, label) => {
+                        const encoder = this.device.createCommandEncoder({ label });
+                        encoder.copyBufferToBuffer(buffer, 0, this.reproductionStateReadback, 0, 4);
+                        this.device.queue.submit([encoder.finish()]);
+                        await this.reproductionStateReadback.mapAsync(MAP_MODE_READ);
+                        try {
+                            return new Uint32Array(this.reproductionStateReadback.getMappedRange(), 0, 1)[0] >>> 0;
+                        }
+                        finally {
+                            this.reproductionStateReadback.unmap();
+                        }
+                    };
+                    const readCompactSlots = async (buffer, count, label) => {
+                        if (count <= 0)
+                            return new Uint32Array(0);
+                        const bytes = count * 4;
+                        const encoder = this.device.createCommandEncoder({ label });
+                        encoder.copyBufferToBuffer(buffer, 0, this.reproductionStateReadback, 0, bytes);
+                        this.device.queue.submit([encoder.finish()]);
+                        await this.reproductionStateReadback.mapAsync(MAP_MODE_READ);
+                        try {
+                            return new Uint32Array(this.reproductionStateReadback.getMappedRange().slice(0, bytes));
+                        }
+                        finally {
+                            this.reproductionStateReadback.unmap();
+                        }
+                    };
+                    const deathCount = Math.min(await readCompactCount(this.deathCandidateCountBuffer, 'mfm-death-candidate-count-readback'), snapshot.length);
+                    if (deathCount > 0) {
+                        deathCandidateSlots = await readCompactSlots(this.deathCandidateSlotBuffer, deathCount, 'mfm-death-candidate-slots-readback');
+                    }
+                    let candidateCount = 0;
+                    if (reproductionCompactionEnabled) {
+                        candidateCount = Math.min(await readCompactCount(this.reproductionCandidateCountBuffer, 'mfm-reproduction-candidate-count-readback'), snapshot.length);
+                        if (candidateCount > 0) {
+                            reproductionCandidateSlots = await readCompactSlots(this.reproductionCandidateSlotBuffer, candidateCount, 'mfm-reproduction-candidate-slots-readback');
+                            const geometryBytes = candidateCount * 16;
+                            const geometryEncoder = this.device.createCommandEncoder({ label: 'mfm-reproduction-geometry-readback' });
+                            geometryEncoder.copyBufferToBuffer(this.reproductionCandidateBuffer, 0, this.reproductionStateReadback, 0, geometryBytes);
+                            this.device.queue.submit([geometryEncoder.finish()]);
+                            await this.reproductionStateReadback.mapAsync(MAP_MODE_READ);
+                            try {
+                                reproductionGeometry = new Float32Array(this.reproductionStateReadback.getMappedRange().slice(0, geometryBytes));
+                            }
+                            finally {
+                                this.reproductionStateReadback.unmap();
+                            }
+                        }
+                    }
+                    // Communication event records are only needed by the CPU when a
+                    // population event can force a topology rebuild or when reproduction
+                    // candidates exist. Otherwise the GPU incoming buffers remain the
+                    // authoritative next-step communication state.
+                    const needsEventReadback = deathCount > 0 || candidateCount > 0;
+                    const eventsReadback = needsEventReadback
+                        ? await this.readbackEvents(eventWrite)
+                        : { senders: new Uint32Array(0), targets: new Uint32Array(0) };
+                    // The GPU writes now represent P_{n+1} for surviving current particles.
+                    this.stateIndex = stateWrite;
+                    this.incomingIndex = incomingWrite;
+                    this.eventIndex = eventWrite;
+                    // Build exact current-step event maps from the GPU selection result.
+                    // For reproduction, success must match the GPU successful[] predicate:
+                    // received && active && hasTargets. The compacted candidate list is the
+                    // authoritative subset after additionally applying the pre-step health
+                    // threshold and post-step survival.
+                    const nextIncomingCharges = new Map();
+                    const nextIncomingSenders = new Map();
+                    const events = new Map();
+                    const reproductionSuccessIds = new Set();
+                    for (const slot of reproductionCandidateSlots) {
+                        if (slot < this.particleCount)
+                            reproductionSuccessIds.add(this.slotToId[slot]);
+                    }
+                    for (let i = 0; i < this.particleCount; i++) {
+                        const senderId = this.slotToId[i];
+                        events.set(senderId, {
+                            // The compacted GPU candidate set is the authoritative success
+                            // predicate for reproduction. Non-candidates do not participate
+                            // in CPU reproduction, so their success bit need not be mirrored.
+                            success: reproductionSuccessIds.has(senderId),
+                            targets: new Set(),
+                        });
+                    }
+                    for (let eventIndex = 0; eventIndex < eventsReadback.senders.length; eventIndex++) {
+                        const senderSlot = eventsReadback.senders[eventIndex];
+                        const targetSlot = eventsReadback.targets[eventIndex];
+                        if (senderSlot >= this.particleCount ||
+                            targetSlot >= this.particleCount) {
+                            continue;
+                        }
+                        const senderId = this.slotToId[senderSlot];
+                        const targetId = this.slotToId[targetSlot];
+                        const senderEvent = events.get(senderId);
+                        if (!senderEvent)
+                            continue;
+                        senderEvent.targets.add(targetId);
+                        const senderGenome = this.population.genomes.get(senderId);
+                        if (senderGenome) {
+                            const transmittedCharge = this.computeQOut(senderGenome);
+                            if (transmittedCharge > 0) {
+                                const previousCharge = nextIncomingCharges.get(targetId) ?? 0;
+                                // WebGPU atomicAdd on u32 wraps modulo 2^32.
+                                const nextCharge = (previousCharge + transmittedCharge) >>> 0;
+                                nextIncomingCharges.set(targetId, nextCharge);
+                            }
+                        }
+                        const senders = nextIncomingSenders.get(targetId) ?? new Set();
+                        senders.add(senderId);
+                        nextIncomingSenders.set(targetId, senders);
+                    }
+                    // -----------------------------------------------------------------------
+                    // Phase 8 — Population dynamics. Death/reproduction remains on CPU.
+                    // Phase 4.1 keeps the existing PopulationState, ParticleState and Genome
+                    // instances for survivors and mutates only their timestep fields in place.
+                    // This removes the per-step allocation of nextStates/nextGenomes and the
+                    // replacement PopulationState while preserving the pre-step snapshot for
+                    // reproduction semantics.
+                    // -----------------------------------------------------------------------
+                    const evolutionResult = await this.withMappedEvolutionState((readback) => {
+                        const deadSlots = new Set(deathCandidateSlots);
+                        const survivingIds = new Set();
+                        for (let i = 0; i < snapshot.length; i++) {
+                            if (!deadSlots.has(i))
+                                survivingIds.add(snapshot[i].id);
+                        }
+                        const deadCount = deathCandidateSlots.length;
+                        // Reproduction runs before survivor mutation. Geometry is applied by
+                        // the exact GPU candidate slot list rather than reconstructing the
+                        // candidate predicate on the CPU.
+                        for (let candidateIndex = 0; candidateIndex < reproductionCandidateSlots.length; candidateIndex++) {
+                            const slot = reproductionCandidateSlots[candidateIndex];
+                            if (slot >= snapshot.length)
+                                continue;
+                            const item = snapshot[slot];
+                            const base = candidateIndex * 4;
+                            item.state.position.x = reproductionGeometry[base];
+                            item.state.position.y = reproductionGeometry[base + 1];
+                            item.state.velocity.x = reproductionGeometry[base + 2];
+                            item.state.velocity.y = reproductionGeometry[base + 3];
+                        }
+                        const offspring = this.createOffspring(snapshot, survivingIds, reproductionSuccessIds);
+                        // Consume mapped GPU memory directly; there is no intermediate CPU
+                        // ArrayBuffer or per-field copy in Phase 5F. Phase 5G-B makes this
+                        // mutation an explicit NORMAL synchronization boundary. Position and
+                        // velocity remain GPU-authoritative except for the conditional
+                        // reproduction geometry sync and explicit full sync.
+                        this.applyDynamicStateToPopulation(readback, 'normal', {
+                            survivingIds,
+                            ...(needsEventReadback
+                                ? { previousIncomingSenders, nextIncomingSenders }
+                                : {}),
+                            snapshot,
+                        });
+                        return { deadCount, survivingIds, offspring };
+                    });
+                    const populationStructureChanged = evolutionResult.deadCount > 0 || evolutionResult.offspring.length > 0;
+                    // 5G-C fix: normal sync intentionally does not copy position/velocity
+                    // into PopulationState. Before changing the CPU topology, capture the
+                    // complete current GPU state while the old slot mapping still matches
+                    // the GPU buffers. Otherwise a subsequent CPU -> GPU rebuild can upload
+                    // stale positions/velocities and effectively freeze/reset particles.
+                    if (populationStructureChanged) {
+                        await this.syncFullCpuStateForSnapshot(snapshot);
+                    }
+                    // Remove dead particles from the persistent PopulationState.
+                    if (evolutionResult.deadCount > 0) {
+                        for (const item of snapshot) {
+                            if (!evolutionResult.survivingIds.has(item.id)) {
+                                this.population.particles.delete(item.id);
+                                this.population.genomes.delete(item.id);
+                            }
+                        }
+                    }
+                    // Add only genuinely new offspring. No survivor Genome is cloned.
+                    for (const child of evolutionResult.offspring) {
+                        this.population.addParticle(child.id, child.genome, child.state);
+                    }
+                    if (needsEventReadback) {
+                        this.incomingChargeMap = nextIncomingCharges;
+                        this.incomingSendersMap = nextIncomingSenders;
+                    }
+                    if (populationStructureChanged) {
+                        this.refreshCpuSlotMapping();
+                    }
+                    await this.resyncAfterPopulationStep(populationStructureChanged);
+                    this.timestep++;
+                    return this.population;
+                })();
+                return finishPromise;
+            },
+        };
     }
     step() {
         if (this.stepInFlight) {
@@ -502,6 +795,9 @@ export class MfmWebGPUStepper {
         }
     }
     async saveState() {
+        // Checkpointing is an exceptional synchronization boundary: make the CPU
+        // population authoritative before serializing it.
+        await this.syncFullCpuState();
         return this.getState();
     }
     async loadState(state) {
@@ -540,6 +836,7 @@ export class MfmWebGPUStepper {
             this.roleBuffer,
             this.particleIdHashBuffer,
             this.genomeHMaxBuffer,
+            this.genomeMateHealthThresholdBuffer,
             this.genomeThetaQBuffer,
             this.genomeABuffer,
             this.genomeKBuffer,
@@ -557,8 +854,17 @@ export class MfmWebGPUStepper {
             this.selectedTargetsBuffer,
             this.selectedCountBuffer,
             this.forceBuffer,
+            this.pressureBuffer,
             this.paramsBuffer,
-            this.stagingReadback,
+            this.fullStateReadback,
+            this.reproductionStateReadback,
+            this.reproductionCandidateBuffer,
+            this.reproductionCandidateSlotBuffer,
+            this.reproductionCandidateCountBuffer,
+            this.deathCandidateSlotBuffer,
+            this.deathCandidateCountBuffer,
+            this.eventCountReadback,
+            this.eventDataReadback,
         ];
         const seen = new Set();
         for (const buffer of buffers) {
@@ -573,7 +879,8 @@ export class MfmWebGPUStepper {
     // GPU resource setup
     // -------------------------------------------------------------------------
     async recreateGpuBuffers(initialUpload) {
-        this.refreshCpuSlotMapping();
+        // Slot mapping is maintained independently from GPU buffer recreation.
+        // Rebuilding GPU resources must not imply an O(N) CPU mapping rebuild.
         this.ensurePopulationFitsCapacity();
         const nextCapacity = Math.max(1, this.config.Nmax, this.population.particles.size);
         const nextMaxK = this.computeRequiredMaxK();
@@ -628,6 +935,7 @@ export class MfmWebGPUStepper {
         this.roleBuffer = make(uintBytes, readWrite, 'mfm-role');
         this.particleIdHashBuffer = make(uintBytes, readWrite, 'mfm-id-hash');
         this.genomeHMaxBuffer = make(floatBytes, readWrite, 'mfm-g-hmax');
+        this.genomeMateHealthThresholdBuffer = make(floatBytes, readWrite, 'mfm-g-mate-health-threshold');
         this.genomeThetaQBuffer = make(uintBytes, readWrite, 'mfm-g-theta');
         this.genomeABuffer = make(floatBytes, readWrite, 'mfm-g-a');
         this.genomeKBuffer = make(uintBytes, readWrite, 'mfm-g-k');
@@ -645,14 +953,24 @@ export class MfmWebGPUStepper {
         this.selectedTargetsBuffer = make(eventBytes, readWrite, 'mfm-selected-targets');
         this.selectedCountBuffer = make(uintBytes, readWrite, 'mfm-selected-count');
         this.forceBuffer = make(float2Bytes, readWrite, 'mfm-force');
+        this.pressureBuffer = make(4, readWrite, 'mfm-pressure');
         this.paramsBuffer = this.device.createBuffer({
             size: paramBytes,
             usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
             label: 'mfm-params',
         });
         const stagingUsage = BUFFER_USAGE_MAP_READ | BUFFER_USAGE_COPY_DST;
-        const readbackLayout = this.getReadbackLayout();
-        this.stagingReadback = make(readbackLayout.totalBytes, stagingUsage, 'mfm-stage-readback');
+        const fullReadbackLayout = this.getFullReadbackLayout();
+        this.fullStateReadback = make(Math.max(4, fullReadbackLayout.totalBytes), stagingUsage, 'mfm-stage-full-readback');
+        const reproductionReadbackLayout = this.getReproductionReadbackLayout();
+        this.reproductionStateReadback = make(reproductionReadbackLayout.totalBytes, stagingUsage, 'mfm-stage-reproduction-geometry-readback');
+        this.reproductionCandidateBuffer = make(Math.max(16, this.capacity * 16), readWrite, 'mfm-reproduction-candidates');
+        this.reproductionCandidateSlotBuffer = make(Math.max(4, this.capacity * 4), readWrite, 'mfm-reproduction-candidate-slots');
+        this.reproductionCandidateCountBuffer = make(4, readWrite, 'mfm-reproduction-candidate-count');
+        this.deathCandidateSlotBuffer = make(Math.max(4, this.capacity * 4), readWrite, 'mfm-death-candidate-slots');
+        this.deathCandidateCountBuffer = make(4, readWrite, 'mfm-death-candidate-count');
+        this.eventCountReadback = make(4, stagingUsage, 'mfm-event-count-readback');
+        this.eventDataReadback = make(Math.max(8, this.capacity * Math.max(1, this.maxK) * 8), stagingUsage, 'mfm-event-data-readback');
     }
     destroyDataBuffersOnly() {
         const buffers = [
@@ -669,6 +987,7 @@ export class MfmWebGPUStepper {
             this.roleBuffer,
             this.particleIdHashBuffer,
             this.genomeHMaxBuffer,
+            this.genomeMateHealthThresholdBuffer,
             this.genomeThetaQBuffer,
             this.genomeABuffer,
             this.genomeKBuffer,
@@ -686,8 +1005,17 @@ export class MfmWebGPUStepper {
             this.selectedTargetsBuffer,
             this.selectedCountBuffer,
             this.forceBuffer,
+            this.pressureBuffer,
             this.paramsBuffer,
-            this.stagingReadback,
+            this.fullStateReadback,
+            this.reproductionStateReadback,
+            this.reproductionCandidateBuffer,
+            this.reproductionCandidateSlotBuffer,
+            this.reproductionCandidateCountBuffer,
+            this.deathCandidateSlotBuffer,
+            this.deathCandidateCountBuffer,
+            this.eventCountReadback,
+            this.eventDataReadback,
         ];
         const seen = new Set();
         for (const buffer of buffers) {
@@ -707,6 +1035,7 @@ export class MfmWebGPUStepper {
         const roles = new Uint32Array(this.capacity);
         const idHashes = new Uint32Array(this.capacity);
         const hmax = new Float32Array(this.capacity);
+        const mateHealthThreshold = new Float32Array(this.capacity);
         const theta = new Uint32Array(this.capacity);
         const a = new Float32Array(this.capacity);
         const k = new Uint32Array(this.capacity);
@@ -732,6 +1061,7 @@ export class MfmWebGPUStepper {
             roles[slot] = this.encodeRole(state.role);
             idHashes[slot] = this.hashParticleId(id);
             hmax[slot] = genome.H_max;
+            mateHealthThreshold[slot] = genome.H_max * this.config.mate_health_percent;
             theta[slot] = this.clampInteger(genome.theta_q, 0, UINT32_MAX);
             a[slot] = genome.A;
             k[slot] = this.clampInteger(Math.floor(genome.K), 0, UINT32_MAX);
@@ -757,6 +1087,7 @@ export class MfmWebGPUStepper {
         this.device.queue.writeBuffer(this.roleBuffer, 0, roles);
         this.device.queue.writeBuffer(this.particleIdHashBuffer, 0, idHashes);
         this.device.queue.writeBuffer(this.genomeHMaxBuffer, 0, hmax);
+        this.device.queue.writeBuffer(this.genomeMateHealthThresholdBuffer, 0, mateHealthThreshold);
         this.device.queue.writeBuffer(this.genomeThetaQBuffer, 0, theta);
         this.device.queue.writeBuffer(this.genomeABuffer, 0, a);
         this.device.queue.writeBuffer(this.genomeKBuffer, 0, k);
@@ -828,6 +1159,12 @@ export class MfmWebGPUStepper {
             { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
             { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
         ]);
+        this.pressurePipeline = this.makePipeline('mfm-pressure', SHADER_PRESSURE, [
+            { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+            { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+            { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+            { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        ]);
         this.communicationSelectPipeline = this.makePipeline('mfm-communication-select', SHADER_COMMUNICATION_SELECT, [
             { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
             ...this.readonlyBindings(1, 12),
@@ -858,7 +1195,8 @@ export class MfmWebGPUStepper {
             { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
             { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
             { binding: 4, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
-            { binding: 5, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+            { binding: 5, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+            { binding: 6, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
         ]);
         this.forcePipeline = this.makePipeline('mfm-force', SHADER_FORCE, [
             { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
@@ -876,6 +1214,20 @@ export class MfmWebGPUStepper {
             { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
             ...this.readonlyBindings(1, 6),
             ...this.storageBindings(7, 2),
+        ]);
+        this.deathCompactionPipeline = this.makePipeline('mfm-death-compaction', SHADER_DEATH_COMPACTION, [
+            { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+            { binding: 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+            { binding: 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'read-only-storage' } },
+            { binding: 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+            { binding: 4, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+        ]);
+        this.reproductionCompactionPipeline = this.makePipeline('mfm-reproduction-compaction', SHADER_REPRODUCTION_COMPACTION, [
+            { binding: 0, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } },
+            ...this.readonlyBindings(1, 7),
+            { binding: 8, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+            { binding: 9, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
+            { binding: 10, visibility: SHADER_STAGE_COMPUTE, buffer: { type: 'storage' } },
         ]);
     }
     makePipeline(label, code, entries) {
@@ -908,6 +1260,23 @@ export class MfmWebGPUStepper {
     // -------------------------------------------------------------------------
     // Compute dispatch helpers / bind groups
     // -------------------------------------------------------------------------
+    createDeathCompactionBindGroup(stateWrite) {
+        return this.makeBindGroup(this.deathCompactionPipeline.layout, [
+            this.paramsBuffer,
+            this.healthBuffers[stateWrite],
+            this.roleBuffer,
+            this.deathCandidateCountBuffer,
+            this.deathCandidateSlotBuffer,
+        ]);
+    }
+    createReproductionCompactionBindGroup(stateRead, stateWrite) {
+        return this.makeBindGroup(this.reproductionCompactionPipeline.layout, [
+            this.paramsBuffer, this.positionBuffers[stateRead], this.velocityBuffers[stateRead],
+            this.healthBuffers[stateRead], this.healthBuffers[stateWrite], this.roleBuffer,
+            this.genomeMateHealthThresholdBuffer, this.successfulBuffer,
+            this.reproductionCandidateCountBuffer, this.reproductionCandidateBuffer, this.reproductionCandidateSlotBuffer,
+        ]);
+    }
     dispatchCompute(encoder, pipelineBundle, bindGroup, dynamicOffset = 0, workgroupCount = Math.ceil(this.particleCount / WORKGROUP_SIZE)) {
         const pass = encoder.beginComputePass();
         pass.setPipeline(pipelineBundle.pipeline);
@@ -966,6 +1335,14 @@ export class MfmWebGPUStepper {
             this.chargeBuffers[stateWrite],
         ]);
     }
+    createPressureBindGroup(stateRead) {
+        return this.makeBindGroup(this.pressurePipeline.layout, [
+            this.paramsBuffer,
+            this.chargeBuffers[stateRead],
+            this.roleBuffer,
+            this.pressureBuffer,
+        ]);
+    }
     createCommunicationSelectBindGroup(stateRead) {
         return this.makeBindGroup(this.communicationSelectPipeline.layout, [
             this.paramsBuffer,
@@ -1014,6 +1391,7 @@ export class MfmWebGPUStepper {
             this.roleBuffer,
             this.genomeHMaxBuffer,
             this.successfulBuffer,
+            this.pressureBuffer,
             this.healthBuffers[stateWrite],
         ]);
     }
@@ -1062,63 +1440,230 @@ export class MfmWebGPUStepper {
             this.velocityBuffers[stateWrite],
         ]);
     }
+    /**
+     * Apply GPU dynamic state to the persistent CPU population at an explicit
+     * synchronization boundary. Phase 5G-B distinguishes the normal timestep
+     * synchronization path from exceptional full synchronization; the byte
+     * layout is intentionally still identical in both modes until Phase 5G-C.
+     */
+    applyDynamicStateToPopulation(readback, mode, context) {
+        const snapshot = context?.snapshot ?? this.takeSnapshot();
+        const survivingIds = context?.survivingIds ?? new Set(snapshot.map(item => item.id));
+        for (let i = 0; i < snapshot.length; i++) {
+            const item = snapshot[i];
+            if (!survivingIds.has(item.id))
+                continue;
+            const state = this.population.particles.get(item.id);
+            if (!state)
+                continue;
+            const protectedParticle = item.state.role !== 'internal';
+            if (mode === 'full') {
+                if (readback.positions && readback.velocities) {
+                    state.position.x = readback.positions[i * 2];
+                    state.position.y = readback.positions[i * 2 + 1];
+                    state.velocity.x = protectedParticle ? 0 : readback.velocities[i * 2];
+                    state.velocity.y = protectedParticle ? 0 : readback.velocities[i * 2 + 1];
+                }
+            }
+            if (readback.healths) {
+                state.health = protectedParticle ? item.state.health : readback.healths[i];
+            }
+            if (readback.charges) {
+                state.charge = readback.charges[i];
+            }
+            if (mode === 'normal') {
+                // Sender history is CPU metadata used by topology/checkpoint paths.
+                // When no population event required event readback this timestep, keep
+                // the last CPU copy instead of replacing it with an empty set.
+                if (context?.nextIncomingSenders) {
+                    state.senderSet = new Set(context.nextIncomingSenders.get(item.id) ?? []);
+                }
+                if (context?.previousIncomingSenders) {
+                    state.prevSenderSet = new Set(context.previousIncomingSenders.get(item.id) ?? []);
+                }
+            }
+        }
+    }
+    /**
+     * Exceptional synchronization boundary. This intentionally keeps the full
+     * dynamic-state readback. In Phase 5F normal sync contains only health; full sync additionally maps
+     * position, velocity and charge.
+     * Later phases can narrow the normal path without changing these callers.
+     */
+    async syncFullCpuStateForSnapshot(snapshot) {
+        if (this.particleCount === 0 || snapshot.length === 0)
+            return;
+        const commandEncoder = this.device.createCommandEncoder({ label: 'mfm-full-cpu-sync-internal' });
+        const readbackLayout = this.getFullReadbackLayout();
+        const stateRead = this.stateIndex;
+        commandEncoder.copyBufferToBuffer(this.positionBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.positions, this.particleCount * 8);
+        commandEncoder.copyBufferToBuffer(this.velocityBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.velocities, this.particleCount * 8);
+        commandEncoder.copyBufferToBuffer(this.healthBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.healths, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.chargeBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.charges, this.particleCount * 4);
+        this.device.queue.submit([commandEncoder.finish()]);
+        await this.fullStateReadback.mapAsync(MAP_MODE_READ);
+        try {
+            const mapped = this.fullStateReadback.getMappedRange();
+            const readback = {
+                positions: new Float32Array(mapped, readbackLayout.positions, this.particleCount * 2),
+                velocities: new Float32Array(mapped, readbackLayout.velocities, this.particleCount * 2),
+                healths: new Float32Array(mapped, readbackLayout.healths, this.particleCount),
+                charges: new Uint32Array(mapped, readbackLayout.charges, this.particleCount),
+            };
+            this.applyDynamicStateToPopulation(readback, 'full', { snapshot });
+        }
+        finally {
+            this.fullStateReadback.unmap();
+        }
+    }
+    async syncFullCpuState() {
+        // Worker messages are asynchronous and are not serialized by the browser.
+        // If a simulation step is completing, wait for its normal synchronization
+        // before starting an exceptional full readback. This prevents the shared
+        // staging buffers from being mapped by two operations at once.
+        if (this.stepInFlight) {
+            await this.stepInFlight;
+        }
+        if (this.encodedStepPending) {
+            throw new Error('Cannot perform a full CPU synchronization before the encoded WebGPU step has been submitted and finished');
+        }
+        if (!this.initialized) {
+            await this.init();
+        }
+        this.validateConfiguration();
+        if (this.populationDirty) {
+            await this.recreateGpuBuffers(false);
+            this.populationDirty = false;
+        }
+        if (this.particleCount === 0)
+            return this.population;
+        const commandEncoder = this.device.createCommandEncoder({ label: 'mfm-full-cpu-sync' });
+        const readbackLayout = this.getFullReadbackLayout();
+        const stateRead = this.stateIndex;
+        commandEncoder.copyBufferToBuffer(this.positionBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.positions, this.particleCount * 8);
+        commandEncoder.copyBufferToBuffer(this.velocityBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.velocities, this.particleCount * 8);
+        commandEncoder.copyBufferToBuffer(this.healthBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.healths, this.particleCount * 4);
+        commandEncoder.copyBufferToBuffer(this.chargeBuffers[stateRead], 0, this.fullStateReadback, readbackLayout.charges, this.particleCount * 4);
+        this.device.queue.submit([commandEncoder.finish()]);
+        await this.withMappedEvolutionState((readback) => {
+            this.applyDynamicStateToPopulation(readback, 'full');
+        }, true);
+        return this.population;
+    }
     // -------------------------------------------------------------------------
     // Readback / CPU population update
     // -------------------------------------------------------------------------
-    async readbackResults() {
-        const layout = this.getReadbackLayout();
+    /**
+     * Consume the mapped evolution readback while it is valid.
+     *
+     * Phase 5F removes the persistent CPU mirror introduced in 5D. The normal
+     * staging memory contains only health in the normal path; charge is GPU-
+     * authoritative and is included only in the separate full-state staging buffer. The callback must not await
+     * or retain any mapped view after returning.
+     */
+    async withMappedEvolutionState(callback, includePositionVelocity = false) {
+        const fullLayout = this.getFullReadbackLayout();
         const particleCount = this.particleCount;
-        const maxK = this.maxK;
-        await this.stagingReadback.mapAsync(MAP_MODE_READ);
-        try {
-            const mapped = this.stagingReadback.getMappedRange();
-            // Copy the whole mapped range once so the returned typed arrays remain
-            // valid after the GPU buffer is unmapped.
-            const data = mapped.slice(0);
-            const positions = new Float32Array(data, layout.positions, particleCount * 2);
-            const velocities = new Float32Array(data, layout.velocities, particleCount * 2);
-            const healths = new Float32Array(data, layout.healths, particleCount);
-            const charges = new Uint32Array(data, layout.charges, particleCount);
-            const qOut = new Uint32Array(data, layout.qOut, particleCount);
-            const active = new Uint32Array(data, layout.active, particleCount);
-            const successful = new Uint32Array(data, layout.successful, particleCount);
-            const selectedCounts = new Uint32Array(data, layout.selectedCounts, particleCount);
-            const selectedTargets = maxK > 0
-                ? new Uint32Array(data, layout.selectedTargets, particleCount * maxK)
-                : new Uint32Array(0);
+        // Full readback contains the complete dynamic state and is used only at
+        // explicit exceptional synchronization boundaries.
+        if (includePositionVelocity) {
+            await this.fullStateReadback.mapAsync(MAP_MODE_READ);
+            try {
+                const mapped = this.fullStateReadback.getMappedRange();
+                const readback = {
+                    positions: new Float32Array(mapped, fullLayout.positions, particleCount * 2),
+                    velocities: new Float32Array(mapped, fullLayout.velocities, particleCount * 2),
+                    healths: new Float32Array(mapped, fullLayout.healths, particleCount),
+                    charges: new Uint32Array(mapped, fullLayout.charges, particleCount),
+                };
+                return callback(readback);
+            }
+            finally {
+                this.fullStateReadback.unmap();
+            }
+        }
+        // Phase 5G normal evolution has no per-particle readback. The staging
+        // buffer remains allocated only for compatibility with the explicit full
+        // synchronization API; never map it in the normal path.
+        return callback({
+            healths: new Float32Array(0),
+            charges: new Uint32Array(0),
+        });
+    }
+    async readbackEvents(eventBufferIndex) {
+        const maxEvents = this.particleCount * this.maxK;
+        if (maxEvents <= 0) {
             return {
-                positions,
-                velocities,
-                healths,
-                charges,
-                qOut,
-                active,
-                successful,
-                selectedTargets,
-                selectedCounts,
+                senders: new Uint32Array(0),
+                targets: new Uint32Array(0),
+            };
+        }
+        // -----------------------------------------------------------------------
+        // First read the number of actual communication events. Phase 5E copies
+        // this count together with the normal timestep readback, so no additional
+        // command submission is required here. mapAsync waits for the submitted
+        // copy to become visible to the CPU.
+        // -----------------------------------------------------------------------
+        await this.eventCountReadback.mapAsync(MAP_MODE_READ);
+        let eventCount = 0;
+        try {
+            const mapped = this.eventCountReadback.getMappedRange();
+            eventCount = new Uint32Array(mapped, 0, 1)[0] >>> 0;
+        }
+        finally {
+            this.eventCountReadback.unmap();
+        }
+        eventCount = Math.min(eventCount, maxEvents);
+        if (eventCount === 0) {
+            return {
+                senders: new Uint32Array(0),
+                targets: new Uint32Array(0),
+            };
+        }
+        // -----------------------------------------------------------------------
+        // Read only the events that were actually generated.
+        // -----------------------------------------------------------------------
+        const eventBytes = eventCount * 4;
+        const eventEncoder = this.device.createCommandEncoder({
+            label: 'mfm-events-readback-copy',
+        });
+        eventEncoder.copyBufferToBuffer(this.senderBuffers[eventBufferIndex], 0, this.eventDataReadback, 0, eventBytes);
+        eventEncoder.copyBufferToBuffer(this.targetBuffers[eventBufferIndex], 0, this.eventDataReadback, eventBytes, eventBytes);
+        this.device.queue.submit([eventEncoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+        await this.eventDataReadback.mapAsync(MAP_MODE_READ);
+        try {
+            const data = this.eventDataReadback.getMappedRange();
+            const senders = new Uint32Array(data.slice(0, eventBytes));
+            const targets = new Uint32Array(data.slice(eventBytes, eventBytes * 2));
+            return {
+                senders,
+                targets,
             };
         }
         finally {
-            this.stagingReadback.unmap();
+            this.eventDataReadback.unmap();
         }
     }
-    addOffspring(snapshot, nextStates, nextGenomes, events) {
-        if (this.config.mating_probability <= 0 || nextStates.size >= this.config.Nmax)
-            return;
+    createOffspring(snapshot, survivingIds, reproductionCandidateIds) {
+        const offspring = [];
+        if (this.config.mating_probability <= 0 ||
+            survivingIds.size >= this.config.Nmax) {
+            return offspring;
+        }
         const candidates = snapshot.filter((item) => item.state.role === 'internal' &&
-            nextStates.has(item.id) &&
-            item.state.health >= item.genome.H_max * this.config.mate_health_percent &&
-            events.get(item.id)?.success);
+            survivingIds.has(item.id) &&
+            reproductionCandidateIds.has(item.id));
         const matingRadius = this.config.R_mate * (this.config.mate_radius_percent / 100);
-        for (let i = 0; i < candidates.length && nextStates.size < this.config.Nmax; i++) {
-            for (let j = i + 1; j < candidates.length && nextStates.size < this.config.Nmax; j++) {
+        for (let i = 0; i < candidates.length && survivingIds.size + offspring.length < this.config.Nmax; i++) {
+            for (let j = i + 1; j < candidates.length && survivingIds.size + offspring.length < this.config.Nmax; j++) {
                 const first = candidates[i];
                 const second = candidates[j];
                 if (this.periodicDistance(first.state.position, second.state.position) > matingRadius ||
                     this.rng.nextFloat() >= this.config.mating_probability) {
                     continue;
                 }
-                const id = `offspring-${this.timestep}-${nextStates.size}`;
+                const id = `offspring-${this.timestep}-${survivingIds.size + offspring.length}`;
                 const childGenome = first.genome.crossover(second.genome, this.rng).mutate(this.rng);
                 const baseX = (first.state.position.x + second.state.position.x) / 2;
                 const baseY = (first.state.position.y + second.state.position.y) / 2;
@@ -1130,51 +1675,79 @@ export class MfmWebGPUStepper {
                     x: (first.state.velocity.x + second.state.velocity.x) / 2 + (this.rng.nextFloat() - 0.5) * 2 * 0.01,
                     y: (first.state.velocity.y + second.state.velocity.y) / 2 + (this.rng.nextFloat() - 0.5) * 2 * 0.01,
                 };
-                nextGenomes.set(id, childGenome);
-                nextStates.set(id, new ParticleState({
-                    version: first.state.version,
-                    position,
-                    velocity,
-                    health: childGenome.H_max * this.config.birth_health_percent,
-                    charge: 0,
-                    senderSet: new Set(),
-                    prevSenderSet: new Set(),
-                    role: 'internal',
-                }));
+                offspring.push({
+                    id,
+                    genome: childGenome,
+                    state: new ParticleState({
+                        version: first.state.version,
+                        position,
+                        velocity,
+                        health: childGenome.H_max * this.config.birth_health_percent,
+                        charge: 0,
+                        senderSet: new Set(),
+                        prevSenderSet: new Set(),
+                        role: 'internal',
+                    }),
+                });
             }
         }
+        return offspring;
     }
     // -------------------------------------------------------------------------
     // CPU reference helpers
     // -------------------------------------------------------------------------
+    /**
+     * Phase 5G: population-event decisions are driven by compact GPU slot lists.
+     * CPU health is intentionally not consulted here because it is no longer a
+     * source of truth for dynamic evolution.
+     */
     takeSnapshot() {
-        const snapshot = [];
+        // Phase 4.3: reuse the same Snapshot objects across timesteps. The
+        // snapshot is only a transient view over the persistent PopulationState;
+        // it does not own ParticleState or Genome instances.
+        const snapshot = this.snapshotScratch;
+        let index = 0;
         for (const [id, state] of this.population.particles) {
             const genome = this.population.genomes.get(id);
-            if (genome)
+            if (!genome)
+                continue;
+            const existing = snapshot[index];
+            if (existing) {
+                existing.id = id;
+                existing.state = state;
+                existing.genome = genome;
+            }
+            else {
                 snapshot.push({ id, state, genome });
+            }
+            index++;
         }
+        snapshot.length = index;
         return snapshot;
     }
-    computePressure(snapshot) {
-        const outputs = snapshot.filter((item) => item.state.role === 'output');
-        const outputCharge = outputs.reduce((sum, item) => sum + item.state.charge, 0);
-        const error = this.pendingError ?? (outputs.length === 0
-            ? 0
-            : 1 - Math.min(1, outputCharge / (outputs.length * this.config.Qmax)));
-        this.pendingError = null;
-        return this.config.P_min +
-            (this.config.P_max - this.config.P_min) * Math.pow(error, this.config.pressure_gamma);
+    computeQOut(genome) {
+        const amplification = Math.fround(genome.A);
+        const theta = Math.fround(this.clampInteger(genome.theta_q, 0, UINT32_MAX));
+        const produced = Math.floor(Math.fround(amplification * theta) + 0.5);
+        return this.clampInteger(produced, 0, UINT32_MAX);
     }
     findInputSlot(snapshot) {
         const explicit = snapshot.findIndex((item) => item.state.role === 'input');
         return explicit >= 0 ? explicit : 0;
     }
+    /**
+     * Rebuild the CPU slot mapping after a topology change or PopulationState
+     * replacement. Stable timesteps intentionally do not call this method.
+     *
+     * The insertion order of PopulationState.particles is the canonical slot
+     * order used when GPU buffers are uploaded/recreated.
+     */
     refreshCpuSlotMapping() {
-        this.slotToId = [];
+        this.slotToId.length = 0;
         this.idToSlot.clear();
         for (const [id] of this.population.particles) {
-            this.idToSlot.set(id, this.slotToId.length);
+            const slot = this.slotToId.length;
+            this.idToSlot.set(id, slot);
             this.slotToId.push(id);
         }
         this.particleCount = this.slotToId.length;
@@ -1268,6 +1841,9 @@ export class MfmWebGPUStepper {
         view.setUint32(84, this.gridCountX >>> 0, true);
         view.setUint32(88, this.gridCountY >>> 0, true);
         view.setFloat32(92, this.gridCellSize, true);
+        view.setFloat32(96, this.config.P_min, true);
+        view.setFloat32(100, this.config.P_max, true);
+        view.setFloat32(104, this.config.pressure_gamma, true);
         this.device.queue.writeBuffer(this.paramsBuffer, dynamicOffset, data);
     }
     encodeRole(role) {
@@ -1339,6 +1915,9 @@ struct Params {
   gridCountX: u32,
   gridCountY: u32,
   gridCellSize: f32,
+  pMin: f32,
+  pMax: f32,
+  pressureGamma: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -1458,6 +2037,38 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let residual = qResidual[i];
   let postDecay = select(0u, residual - min(residual, params.deltaQ), residual > 0u);
   chargeOut[i] = min(params.qmax, postDecay);
+}
+`;
+const SHADER_PRESSURE = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> charges: array<u32>;
+@group(0) @binding(2) var<storage, read> role: array<u32>;
+@group(0) @binding(3) var<storage, read_write> pressureOut: array<f32>;
+
+@compute @workgroup_size(1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x != 0u) { return; }
+
+  // params.globalPressure >= 0 means setGlobalError() supplied an explicit
+  // error value. Otherwise derive the error from Q_n of output particles.
+  var error = params.globalPressure;
+  if (error < 0.0) {
+    var outputCharge = 0.0;
+    var outputCount = 0.0;
+    for (var i = 0u; i < params.activeCount; i++) {
+      if (role[i] == ${ROLE_OUTPUT}u) {
+        outputCharge += f32(charges[i]);
+        outputCount += 1.0;
+      }
+    }
+    if (outputCount == 0.0) {
+      error = 0.0;
+    } else {
+      error = 1.0 - min(1.0, outputCharge / (outputCount * f32(params.qmax)));
+    }
+  }
+
+  pressureOut[0] = params.pMin +
+    (params.pMax - params.pMin) * pow(error, params.pressureGamma);
 }
 `;
 const SHADER_COMMUNICATION_SELECT = /* wgsl */ `${COMMON}
@@ -1694,7 +2305,8 @@ const SHADER_HEALTH_UPDATE = /* wgsl */ `${COMMON}
 @group(0) @binding(2) var<storage, read> role: array<u32>;
 @group(0) @binding(3) var<storage, read> hmax: array<f32>;
 @group(0) @binding(4) var<storage, read> successful: array<u32>;
-@group(0) @binding(5) var<storage, read_write> healthOut: array<f32>;
+@group(0) @binding(5) var<storage, read> pressure: array<f32>;
+@group(0) @binding(6) var<storage, read_write> healthOut: array<f32>;
 
 @compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -1708,10 +2320,53 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let reward = select(0.0, 1.0, successful[i] != 0u);
   healthOut[i] = clamp(
-    healthIn[i] + params.beta * reward - params.lambda * params.globalPressure,
+    healthIn[i] + params.beta * reward - params.lambda * pressure[0],
     0.0,
     hmax[i],
   );
+}
+`;
+const SHADER_DEATH_COMPACTION = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> healthOut: array<f32>;
+@group(0) @binding(2) var<storage, read> role: array<u32>;
+@group(0) @binding(3) var<storage, read_write> deathCount: array<u32>;
+@group(0) @binding(4) var<storage, read_write> deathSlots: array<u32>;
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x != 0u) { return; }
+  var count = 0u;
+  for (var i = 0u; i < params.activeCount; i++) {
+    if (role[i] == ${ROLE_INTERNAL}u && healthOut[i] <= 0.0) {
+      deathSlots[count] = i;
+      count++;
+    }
+  }
+  deathCount[0] = count;
+}
+`;
+const SHADER_REPRODUCTION_COMPACTION = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> healthIn: array<f32>;
+@group(0) @binding(4) var<storage, read> healthOut: array<f32>;
+@group(0) @binding(5) var<storage, read> role: array<u32>;
+@group(0) @binding(6) var<storage, read> mateThreshold: array<f32>;
+@group(0) @binding(7) var<storage, read> successful: array<u32>;
+@group(0) @binding(8) var<storage, read_write> candidateCount: array<u32>;
+@group(0) @binding(9) var<storage, read_write> candidateGeometry: array<vec4<f32>>;
+@group(0) @binding(10) var<storage, read_write> candidateSlots: array<u32>;
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x != 0u) { return; }
+  var count = 0u;
+  for (var i = 0u; i < params.activeCount; i++) {
+    let eligible = role[i] == ${ROLE_INTERNAL}u && healthIn[i] >= mateThreshold[i] && successful[i] != 0u && healthOut[i] > 0.0;
+    if (!eligible) { continue; }
+    candidateSlots[count] = i;
+    candidateGeometry[count] = vec4<f32>(positions[i].x, positions[i].y, velocities[i].x, velocities[i].y);
+    count++;
+  }
+  candidateCount[0] = count;
 }
 `;
 const SHADER_FORCE = /* wgsl */ `${COMMON}
