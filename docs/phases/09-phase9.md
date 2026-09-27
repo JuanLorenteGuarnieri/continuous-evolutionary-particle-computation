@@ -123,6 +123,6 @@ The following conditions must be met:
 - [ ] Unit and integration tests passing.
 - [ ] Acceptance criteria met in local development environment.
 
---- 
+---
 
 *This plan is derived from the Implementation Phases section (32) of the Reference Implementation and the broader documentation in `/docs/`. It is intended to be executed after the successful completion of Phase 8.*

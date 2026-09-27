@@ -10,7 +10,8 @@
   "scripts": {
     "test": "vitest run",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "build": "tsc"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit --allowImportingTsExtensions"
   },
   "dependencies": {
     "@cepc/shared-config": "workspace:*"

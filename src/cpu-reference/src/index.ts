@@ -1,3 +1,3 @@
-export * from './MfmCpuReference.ts';
-export * from './prng.ts';
-export * from './vector2d.ts';
+export * from './MfmCpuReference';
+export * from './prng';
+export * from './vector2d';

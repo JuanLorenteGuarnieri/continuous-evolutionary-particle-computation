@@ -18,42 +18,42 @@ Translate Stage IV into executable experiments.
 ### 1. Experiment Manifest Design
 
 - Define a manifest schema (e.g., JSON or YAML) that specifies:
-   - Experiment type (P0, P1, etc.)
-   - Simulation parameters (population size, timesteps, etc.)
-   - Input signals (if applicable)
-   - Readout configuration (if applicable)
-   - Output metrics to collect
-   - Random seed for reproducibility
-   - Backend preference (CPU/GPU)
+  - Experiment type (P0, P1, etc.)
+  - Simulation parameters (population size, timesteps, etc.)
+  - Input signals (if applicable)
+  - Readout configuration (if applicable)
+  - Output metrics to collect
+  - Random seed for reproducibility
+  - Backend preference (CPU/GPU)
 
 ### 2. Manifest Implementation
 
 - Create a package (e.g., `@cepc/experiment-manifests`) or integrate into `@cepc/experiment-api` to define manifest schemas and validation.
 - Implement manifests for each of the Stage IV protocols listed:
-   - P0 (likely a simple passive or baseline experiment)
-   - P1 (e.g., line attractor or memory task)
-   - P2, P3, P4 (progressively complex tasks)
-   - Delay memory
-   - XOR/parity (logic gate)
-   - NARMA-10 (nonlinear autoregressive moving average)
-   - Mackey–Glass (chaotic time series prediction)
-   - Lorenz (chaotic system prediction)
-   - Regime classification (switching between dynamical regimes)
-   - A→B→A (sequence learning)
-   - Drift (gradual changes in input statistics)
-   - Abrupt shifts (sudden changes in input)
-   - Damage/recovery (lesioning and recovery simulations)
+  - P0 (likely a simple passive or baseline experiment)
+  - P1 (e.g., line attractor or memory task)
+  - P2, P3, P4 (progressively complex tasks)
+  - Delay memory
+  - XOR/parity (logic gate)
+  - NARMA-10 (nonlinear autoregressive moving average)
+  - Mackey–Glass (chaotic time series prediction)
+  - Lorenz (chaotic system prediction)
+  - Regime classification (switching between dynamical regimes)
+  - A→B→A (sequence learning)
+  - Drift (gradual changes in input statistics)
+  - Abrupt shifts (sudden changes in input)
+  - Damage/recovery (lesioning and recovery simulations)
 
 ### 3. Experiment Runner
 
 - Implement a runner service (in `@cepc/experiment-api`) that:
-   - Loads and validates experiment manifests.
-   - Initializes the simulation with the manifest's configuration.
-   - Applies input signals over time as specified.
-   - Collects output charges and computes readout predictions.
-   - Logs metrics and internal state (if enabled) for analysis.
-   - Handles experiment lifecycle: start, pause, resume, stop.
-   - Supports checkpointing and restoring experiment state.
+  - Loads and validates experiment manifests.
+  - Initializes the simulation with the manifest's configuration.
+  - Applies input signals over time as specified.
+  - Collects output charges and computes readout predictions.
+  - Logs metrics and internal state (if enabled) for analysis.
+  - Handles experiment lifecycle: start, pause, resume, stop.
+  - Supports checkpointing and restoring experiment state.
 
 ### 4. Integration with Simulation and Readout
 
@@ -64,20 +64,20 @@ Translate Stage IV into executable experiments.
 ### 5. Result Collection and Export
 
 - Define a result format that includes:
-   - Input and output time series
-   - Readout predictions (if applicable)
-   - Computed performance metrics (e.g., error, correlation)
-   - Manifest used and git commit hash for reproducibility
-   - Optional: internal diagnostics (population health, charge distribution, etc.)
+  - Input and output time series
+  - Readout predictions (if applicable)
+  - Computed performance metrics (e.g., error, correlation)
+  - Manifest used and git commit hash for reproducibility
+  - Optional: internal diagnostics (population health, charge distribution, etc.)
 - Implement export functionality to save results to disk (JSON/CSV) or IndexedDB for browser persistence.
 
 ### 6. Experiment API Enhancements
 
 - Extend the experiment-api package to provide:
-   - Functions to load manifests from files or URLs.
-   - Functions to run experiments and return results.
-   - Functions to list available experiment types.
-   - Event hooks for progress reporting (useful for UI updates).
+  - Functions to load manifests from files or URLs.
+  - Functions to run experiments and return results.
+  - Functions to list available experiment types.
+  - Event hooks for progress reporting (useful for UI updates).
 
 ### 7. Testing and Validation
 
@@ -132,6 +132,6 @@ The following conditions must be met:
 - [ ] Experiments runnable on both CPU and GPU backends.
 - [ ] Acceptance criteria met in local development environment.
 
---- 
+---
 
 *This plan is derived from the Implementation Phases section (32) of the Reference Implementation and the broader documentation in `/docs/`. It is intended to be executed after the successful completion of Phase 9.*

@@ -11,11 +11,12 @@
     "test": "vitest run",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "build": "node -e \"console.log('experiment-api build stub')\"",
-    "test": "node -e \"console.log('experiment-api test stub')\""
+    "typecheck": "tsc --noEmit --allowImportingTsExtensions"
   },
   "dependencies": {
     "@cepc/shared-config": "workspace:*",
-    "@cepc/webgpu-mfm": "workspace:*"
+    "@cepc/webgpu-mfm": "workspace:*",
+    "@cepc/cpu-reference": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

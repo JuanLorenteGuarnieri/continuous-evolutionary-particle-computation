@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Genome, ParticleState, PopulationState, MFMConfig, ExperimentConfig, SimulationSnapshot, ExperimentManifest } from '../src/index.js';
+import { Genome, ParticleState, PopulationState, MFMConfig, ExperimentConfig, SimulationSnapshot, ExperimentManifest } from '../src/index';
 
 describe('Genome', () => {
   it('creates valid genome', () => {

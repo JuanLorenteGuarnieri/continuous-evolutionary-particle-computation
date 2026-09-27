@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MFMConfig, Genome, ParticleState, PopulationState } from '@cepc/shared-config';
-import { MfmCpuReference } from '../src/MfmCpuReference.js';
-import { periodicDistance } from '../src/vector2d.js';
+import { MfmCpuReference } from '@cepc/cpu-reference';
+import { periodicDistance } from '../src/vector2d';
 describe('vector2d', () => {
     it('periodic distance wraps', () => {
         const d = periodicDistance({ x: 0, y: 0 }, { x: 9, y: 0 }, 10, 10);

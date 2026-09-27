@@ -2715,7 +2715,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             break;
         }
 
-        if (j != i && !isSelected(i, j)) {
+        if (j != i && role[j] != ${ROLE_INPUT}u && !isSelected(i, j)) {
           let delta = periodicDelta(positions[i], positions[j]);
           let d2 = dot(delta, delta);
           if (d2 <= sourceRangeSquared) {
@@ -2753,7 +2753,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             break;
         }
 
-        if (j != i && !isSelected(i, j)) {
+        if (j != i && role[j] != ${ROLE_INPUT}u && !isSelected(i, j)) {
           let delta = periodicDelta(positions[i], positions[j]);
           let d2 = dot(delta, delta);
           if (d2 <= sourceRangeSquared) {
@@ -2796,7 +2796,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             break;
         }
 
-        if (j != i && !isSelected(i, j)) {
+        if (j != i && role[j] != ${ROLE_INPUT}u && !isSelected(i, j)) {
           let delta = periodicDelta(positions[i], positions[j]);
           let d2 = dot(delta, delta);
           if (d2 <= sourceRangeSquared) {

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --allowImportingTsExtensions"
   },
   "dependencies": {
     "@cepc/cpu-reference": "workspace:*",

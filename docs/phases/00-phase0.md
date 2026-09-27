@@ -85,17 +85,17 @@ Set up a reproducible development environment that allows building, testing, and
 
 - Create `.github/workflows/ci.yml`.
 - On push and pull request to main:
-   - Setup Node.js (use pnpm-action/setup-pnpm).
-   - Install dependencies with `pnpm install`.
-   - Run `pnpm test` (Vitest).
-   - Run `pnpm run lint` (ESLint + Prettier).
-   - Setup C++ environment (install cmake, a compiler, and optionally GoogleTest via package manager).
-   - Configure and build C++ project: `cmake -S src/cpp-oracle -B build && cmake --build build`.
-   - Run C++ tests: `ctest --test-dir build --output-on-failure`.
-   - Setup Python (use actions/setup-python).
-   - Install Python dependencies: `pip install -r python/requirements.txt` (or pyproject).
-   - Run pytest: `pytest python/`.
-   - Optionally build the Vite app: `pnpm run build` (vite build) and verify output.
+  - Setup Node.js (use pnpm-action/setup-pnpm).
+  - Install dependencies with `pnpm install`.
+  - Run `pnpm test` (Vitest).
+  - Run `pnpm run lint` (ESLint + Prettier).
+  - Setup C++ environment (install cmake, a compiler, and optionally GoogleTest via package manager).
+  - Configure and build C++ project: `cmake -S src/cpp-oracle -B build && cmake --build build`.
+  - Run C++ tests: `ctest --test-dir build --output-on-failure`.
+  - Setup Python (use actions/setup-python).
+  - Install Python dependencies: `pip install -r python/requirements.txt` (or pyproject).
+  - Run pytest: `pytest python/`.
+  - Optionally build the Vite app: `pnpm run build` (vite build) and verify output.
 
 ### 11. Documentation
 

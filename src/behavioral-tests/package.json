@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node ../../tests/behavioral/run-tests.js",
+    "test": "vitest run",
     "lint": "echo lint ok"
+  },
+  "dependencies": {
+    "@cepc/shared-config": "workspace:*",
+    "@cepc/cpu-reference": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

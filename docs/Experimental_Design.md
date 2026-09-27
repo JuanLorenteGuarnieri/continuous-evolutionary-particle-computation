@@ -1,4 +1,5 @@
 # Continuous Evolutionary Particle Computation (CEPC)
+
 # Stage IV — Experimental Design
 
 ## Experimental protocol for falsifiable evaluation of the Minimal Formal Model
@@ -221,6 +222,7 @@ For candidates in the neighborhood,
 \[
 P(j|i,n)
 =
+
 \frac{\exp(\alpha_i S_{ij}^{comm})}
 {\sum_{k\in\mathcal N_i^c(n)}\exp(\alpha_iS_{ik}^{comm})}.
 \]
@@ -274,6 +276,7 @@ The baseline effective range is bounded and monotonic in charge:
 \[
 R_{s,i}^{eff}(n)
 =
+
 R_{min}+(R_{max}-R_{min})\frac{q_i^n}{Q_{max}}.
 \]
 
@@ -292,6 +295,7 @@ The pair force is bounded, local and potentially asymmetric:
 \[
 F_{ij}^n
 =
+
 S_{ij}^{spatial}
 \left(1-\frac{d_{ij}}{R_{s,i}^{eff}(n)}\right)_+
 \frac{r_{ij}}{d_{ij}+\varepsilon}.
@@ -750,7 +754,7 @@ A matched fixed-particle reservoir should also receive equivalent deletion pertu
 The following ablations are mandatory before strong paradigm claims.
 
 | Mechanism | Full MFM | Ablation | Main causal question |
-|---|---:|---:|---|
+| --- | ---: | ---: | --- |
 | Movement | ✓ | No movement | Does spatial motion matter? |
 | Charge decay | ✓ | \(\delta_q=0\) | Does fading activation matter? |
 | Amplification | ✓ | \(A=1\) or restricted | Is gain necessary? |
@@ -1111,6 +1115,7 @@ For a sampled particle or lineage, define a counterfactual task contribution:
 \[
 \Delta_i
 =
+
 L(\text{system without }i)-L(\text{system with }i).
 \]
 
@@ -1335,7 +1340,7 @@ This event trace is essential for causal and debugging analysis.
 # 23. Reference Experiment Matrix
 
 | Experiment | Medium | Evolution | Error pressure | Main result |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | E0 | Static particles | No | None | Existence of computation |
 | E1 | Mobile particles | No | None | Effect of spatial dynamics |
 | E2 | Mobile + decay/coupling | No | None | Fast memory regime |
@@ -1490,7 +1495,6 @@ Only Class V would justify serious paradigm-level claims in Stage VII.
 
 This protocol treats established reservoir-computing and continual-learning metrics as measurement tools, not as evidence that CEPC satisfies the corresponding theoretical assumptions. In particular, memory-capacity results are interpreted conditionally on the measured state representation, and continual-learning metrics are adapted to a system whose internal structure changes through birth/death/evolution rather than gradient updates.
 
-
 Reservoir computing research provides the conceptual basis for measuring memory, separation, nonlinear processing and linear-readout performance. Dambre et al. formalized information-processing capacity for dynamical systems, while later work established universality results for suitable fading-memory reservoir families. citeturn524425search1turn524425academia60turn524425academia59
 
 Physical reservoir computing demonstrates that unconventional dynamical substrates can perform temporal computation. In particular, Wang and Cichos demonstrated a physical reservoir based on synthetic active particles and evaluated chaotic-series prediction including Mackey–Glass and Lorenz, making a strong particle-reservoir control scientifically necessary for CEPC. citeturn524425search0
@@ -1568,10 +1572,10 @@ The project should only move to Stage VII after the empirical evidence has earne
 
 # References
 
-1. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information Processing Capacity of Dynamical Systems. *Scientific Reports*, 2, 514. https://doi.org/10.1038/srep00514
-2. Grigoryeva, L., & Ortega, J.-P. (2018). Echo State Networks are Universal. arXiv:1806.00797. https://arxiv.org/abs/1806.00797
-3. Grigoryeva, L., & Ortega, J.-P. (2017/2018). Universal discrete-time reservoir computers with stochastic inputs and linear readouts using non-homogeneous state-affine systems. arXiv:1712.00754. https://arxiv.org/abs/1712.00754
-4. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. *Nature Communications*, 15, 774. https://doi.org/10.1038/s41467-024-44856-5
-5. Díaz-Rodríguez, N., Lomonaco, V., Filliat, D., & Maltoni, D. (2018). Don't forget, there is more than forgetting: new metrics for Continual Learning. arXiv:1810.13166. https://arxiv.org/abs/1810.13166
-6. De Lange, M., Aljundi, R., Masana, M., Parisot, S., Jia, X., Leonardis, A., Slabaugh, G., & Tuytelaars, T. (2019). A continual learning survey: Defying forgetting in classification tasks. arXiv:1909.08383. https://arxiv.org/abs/1909.08383
-7. Wang, L., Zhang, X., Su, H., & Zhu, J. (2023). A Comprehensive Survey of Continual Learning: Theory, Method and Application. arXiv:2302.00487. https://arxiv.org/abs/2302.00487
+1. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information Processing Capacity of Dynamical Systems. _Scientific Reports_, 2, 514. <https://doi.org/10.1038/srep00514>
+2. Grigoryeva, L., & Ortega, J.-P. (2018). Echo State Networks are Universal. arXiv:1806.00797. <https://arxiv.org/abs/1806.00797>
+3. Grigoryeva, L., & Ortega, J.-P. (2017/2018). Universal discrete-time reservoir computers with stochastic inputs and linear readouts using non-homogeneous state-affine systems. arXiv:1712.00754. <https://arxiv.org/abs/1712.00754>
+4. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. _Nature Communications_, 15, 774. <https://doi.org/10.1038/s41467-024-44856-5>
+5. Díaz-Rodríguez, N., Lomonaco, V., Filliat, D., & Maltoni, D. (2018). Don't forget, there is more than forgetting: new metrics for Continual Learning. arXiv:1810.13166. <https://arxiv.org/abs/1810.13166>
+6. De Lange, M., Aljundi, R., Masana, M., Parisot, S., Jia, X., Leonardis, A., Slabaugh, G., & Tuytelaars, T. (2019). A continual learning survey: Defying forgetting in classification tasks. arXiv:1909.08383. <https://arxiv.org/abs/1909.08383>
+7. Wang, L., Zhang, X., Su, H., & Zhu, J. (2023). A Comprehensive Survey of Continual Learning: Theory, Method and Application. arXiv:2302.00487. <https://arxiv.org/abs/2302.00487>

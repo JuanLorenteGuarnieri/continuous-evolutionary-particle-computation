@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ExperimentRunner } from '../src/ExperimentRunner.js';
-import { MetricsCollector } from '../src/MetricsCollector.js';
+import { ExperimentRunner } from '../src/ExperimentRunner.ts';
+import { MetricsCollector } from '../src/MetricsCollector.ts';
 import { MFMConfig, ExperimentConfig, ExperimentManifest } from '@cepc/shared-config';
 describe('Experiment API', () => {
   it('runner creates result', async () => {

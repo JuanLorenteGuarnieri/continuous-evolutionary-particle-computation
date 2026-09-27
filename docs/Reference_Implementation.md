@@ -197,6 +197,7 @@ Communication score:
 \[
 S_{ij}^{comm}
 =
+
 \omega_{R,i}\phi_R(g_j)
 +
 \omega_{A,i}\phi_A(g_j)
@@ -209,6 +210,7 @@ The target probability is:
 \[
 P(j|i)
 =
+
 \frac{e^{\alpha S_{ij}^{comm}}}
 {\sum_{k\in\mathcal N_i^c(n)}e^{\alpha S_{ik}^{comm}}}.
 \]
@@ -267,6 +269,7 @@ Health update:
 \[
 H_i^{n+1}
 =
+
 \operatorname{clip}
 \left[
 H_i^n+\beta_iR_i^n-\lambda_iP(E_n),
@@ -335,6 +338,7 @@ For mobile particles:
 \[
 \mathbf v_i^{n+1}
 =
+
 \mathbf v_i^n+
 \frac{\Delta t}{m_i}
 (\mathbf F_i^n-\gamma_i\mathbf v_i^n),
@@ -343,6 +347,7 @@ For mobile particles:
 \[
 \mathbf x_i^{n+1}
 =
+
 \Pi_\Omega(\mathbf x_i^n+\Delta t\mathbf v_i^{n+1}).
 \]
 
@@ -518,7 +523,7 @@ WebGPU is appropriate because its compute pipelines expose GPU-parallel computat
 ## 2.3 Technology decisions
 
 | Layer | Decision |
-|---|---|
+| --- | --- |
 | Application | React |
 | Language | TypeScript |
 | Bundler | Vite |
@@ -1224,6 +1229,7 @@ then:
 \[
 p_{ij}
 =
+
 \frac{e^{\alpha S_{ij}-m_i}}
 {\sum_k e^{\alpha S_{ik}-m_i}}.
 \]
@@ -1950,7 +1956,7 @@ Examples:
 # 22. Cross-Backend Validation Matrix
 
 | Feature | CPU TS | GPU WebGPU | C++ Oracle |
-|---|---:|---:|---:|
+| --- | ---: | ---: | ---: |
 | Charge integer rules | ✓ | ✓ | ✓ |
 | Threshold | ✓ | ✓ | ✓ |
 | Communication neighborhood | ✓ | ✓ | ✓ |
@@ -2741,7 +2747,7 @@ The repository contains:
 # 34. MFM-to-Code Traceability Matrix
 
 | MFM element | Canonical implementation area | Primary tests |
-|---|---|---|
+| --- | --- | --- |
 | Torus domain | `model/domain`, `simulation/mechanics` | periodic-distance tests |
 | Genotype | `model/genome` | serialization/invariant tests |
 | Dynamic state | `model/state` | schema tests |
@@ -2988,19 +2994,19 @@ At that point Stage VI is no longer a software-validation phase. It becomes a ge
 
 # 40. References and Technical Foundations
 
-1. WebGPU API — MDN Web Docs. https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API
-2. GPU API — MDN Web Docs. https://developer.mozilla.org/en-US/docs/Web/API/GPU
-3. Vite — Static Deployment Guide. https://vite.dev/guide/static-deploy
-4. GitHub Pages — Creating a GitHub Pages site. https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site
-5. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information Processing Capacity of Dynamical Systems. *Scientific Reports*, 2, 514. https://doi.org/10.1038/srep00514
-6. Maass, W., Natschläger, T., & Markram, H. (2002). Real-time computing without stable states. *Neural Computation*, 14(11), 2531–2560. https://doi.org/10.1162/089976602760407955
-7. Stepney, S. (2024). Physical reservoir computing: A tutorial. *Natural Computing*, 23, 665–685. https://doi.org/10.1007/s11047-024-09997-y
-8. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. *Nature Communications*, 15, 774. https://doi.org/10.1038/s41467-024-44856-5
-9. Mordvintsev, A., Randazzo, E., Niklasson, E., & Levin, M. (2020). Growing Neural Cellular Automata. *Distill*, 5(2), e00023. https://doi.org/10.23915/distill.00023
-10. Pajouheshgar, E., Kim, H., Süsstrunk, S., Jakob, W., & Park, J. (2026). Neural Particle Automata: Learning Self-Organizing Particle Dynamics. *SIGGRAPH 2026*. https://doi.org/10.1145/3799902.3811052
-11. Li, J., Bauer, R., Rentzeperis, I., & van Leeuwen, C. (2024). Adaptive rewiring: A general principle for neural network development. *Frontiers in Network Physiology*, 4, 1410092. https://doi.org/10.3389/fnetp.2024.1410092
-12. Holtmaat, A., & Svoboda, K. (2009). Experience-dependent structural synaptic plasticity in the mammalian brain. *Nature Reviews Neuroscience*, 10, 647–658. https://doi.org/10.1038/nrn2699
-13. Lenski, R. E., et al. (2003). The evolutionary origin of complex features. *Nature*, 423, 139–144. https://doi.org/10.1038/nature01568
+1. WebGPU API — MDN Web Docs. <https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API>
+2. GPU API — MDN Web Docs. <https://developer.mozilla.org/en-US/docs/Web/API/GPU>
+3. Vite — Static Deployment Guide. <https://vite.dev/guide/static-deploy>
+4. GitHub Pages — Creating a GitHub Pages site. <https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site>
+5. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information Processing Capacity of Dynamical Systems. _Scientific Reports_, 2, 514. <https://doi.org/10.1038/srep00514>
+6. Maass, W., Natschläger, T., & Markram, H. (2002). Real-time computing without stable states. _Neural Computation_, 14(11), 2531–2560. <https://doi.org/10.1162/089976602760407955>
+7. Stepney, S. (2024). Physical reservoir computing: A tutorial. _Natural Computing_, 23, 665–685. <https://doi.org/10.1007/s11047-024-09997-y>
+8. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. _Nature Communications_, 15, 774. <https://doi.org/10.1038/s41467-024-44856-5>
+9. Mordvintsev, A., Randazzo, E., Niklasson, E., & Levin, M. (2020). Growing Neural Cellular Automata. _Distill_, 5(2), e00023. <https://doi.org/10.23915/distill.00023>
+10. Pajouheshgar, E., Kim, H., Süsstrunk, S., Jakob, W., & Park, J. (2026). Neural Particle Automata: Learning Self-Organizing Particle Dynamics. _SIGGRAPH 2026_. <https://doi.org/10.1145/3799902.3811052>
+11. Li, J., Bauer, R., Rentzeperis, I., & van Leeuwen, C. (2024). Adaptive rewiring: A general principle for neural network development. _Frontiers in Network Physiology_, 4, 1410092. <https://doi.org/10.3389/fnetp.2024.1410092>
+12. Holtmaat, A., & Svoboda, K. (2009). Experience-dependent structural synaptic plasticity in the mammalian brain. _Nature Reviews Neuroscience_, 10, 647–658. <https://doi.org/10.1038/nrn2699>
+13. Lenski, R. E., et al. (2003). The evolutionary origin of complex features. _Nature_, 423, 139–144. <https://doi.org/10.1038/nature01568>
 
 ---
 

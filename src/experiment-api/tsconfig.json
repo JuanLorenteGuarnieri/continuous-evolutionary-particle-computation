@@ -3,10 +3,9 @@
   "compilerOptions": {
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": "./src",
     "sourceMap": true,
     "module": "ESNext",
     "target": "ES2022"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

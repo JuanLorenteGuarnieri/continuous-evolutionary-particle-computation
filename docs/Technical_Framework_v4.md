@@ -98,6 +98,7 @@ CEPC shares the principle that the substrate dynamics perform part of the comput
 \[
 \mathcal P_{n+1}
 =
+
 F(\mathcal P_n,u_n,E_{n-1},\xi_n).
 \]
 
@@ -165,7 +166,7 @@ g_i=
 The genes have the following roles:
 
 | Gene | Meaning |
-|---|---|
+| --- | --- |
 | \(H_{\max}\) | maximum health |
 | \(\theta_q\) | charge activation threshold |
 | \(A\) | multiplicative charge transformation |
@@ -328,6 +329,7 @@ Communication preference is independent from spatial preference. The minimal sco
 \[
 S_{ij}^{comm}
 =
+
 \omega_{i,R}\phi_R(g_j)
 +
 \omega_{i,A}\phi_A(g_j)
@@ -344,6 +346,7 @@ Given an activated particle,
 \[
 P(j\mid i)
 =
+
 \frac{\exp(\alpha S_{ij}^{comm})}
 {\sum_{k\in\mathcal N_i^c}\exp(\alpha S_{ik}^{comm})}.
 \]
@@ -422,6 +425,7 @@ For \(j\) inside the spatial interaction neighborhood,
 \[
 \mathbf F_{ij}^n
 =
+
 S_{ij}^{spatial}
 \,w(d_{ij};R_i^{s,eff})
 \,\hat{\mathbf r}_{ij}.
@@ -432,6 +436,7 @@ Here
 \[
 \hat{\mathbf r}_{ij}
 =
+
 \frac{\mathbf r_{ij}}
 {d_{ij}+\varepsilon}
 \]
@@ -452,6 +457,7 @@ The minimal preference score is
 \[
 S_{ij}^{spatial}
 =
+
 \omega_{i,R}\phi_R(g_j)
 +
 \omega_{i,A}\phi_A(g_j)
@@ -488,6 +494,7 @@ This removes the assumption of Newtonian action–reaction reciprocity. Nonrecip
 \[
 \mathbf F_i^n
 =
+
 \sum_{j\in\mathcal N_i^s(n)}
 \mathbf F_{ij}^n.
 \]
@@ -503,6 +510,7 @@ Each non-fixed particle obeys
 \[
 m_i\dot{\mathbf v}_i
 =
+
 \mathbf F_i-\gamma_i\mathbf v_i.
 \]
 
@@ -511,6 +519,7 @@ A semi-implicit Euler discretization gives
 \[
 \mathbf v_i^{n+1}
 =
+
 \mathbf v_i^n+
 \frac{\Delta t}{m_i}
 \left(
@@ -522,6 +531,7 @@ A semi-implicit Euler discretization gives
 \boxed{
 \mathbf x_i^{n+1}
 =
+
 \mathbf x_i^n+
 \Delta t\,\mathbf v_i^{n+1}
 }
@@ -568,6 +578,7 @@ Health evolves as
 \boxed{
 H_i^{n+1}
 =
+
 \operatorname{clip}
 \left[
 H_i^n+
@@ -593,6 +604,7 @@ The output is read from fixed output particles:
 \[
 \hat{\mathbf y}_n
 =
+
 W_{out}\mathbf q_{out,n}+\mathbf b.
 \]
 
@@ -655,6 +667,7 @@ For gene \(r\), categorical or integer genes can use discrete inheritance:
 \[
 g_k^{(r)}
 =
+
 \begin{cases}
  g_i^{(r)},&\xi_r<1/2,\\
  g_j^{(r)},&\xi_r\ge1/2.
@@ -666,6 +679,7 @@ Continuous genes use interpolation:
 \[
 g_k^{(r)}
 =
+
 \alpha g_i^{(r)}+(1-\alpha)g_j^{(r)}+\epsilon_r,
 \qquad
 \alpha\sim U(0,1).
@@ -1099,19 +1113,19 @@ The following remain unproven:
 
 # References
 
-1. Jaeger, H. (2001). *The Echo State Approach to Analysing and Training Recurrent Neural Networks*. GMD Report 148.
-2. Maass, W., Natschläger, T., & Markram, H. (2002). Real-time computing without stable states. *Neural Computation*, 14(11), 2531–2560. https://doi.org/10.1162/089976602760407955
-3. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information processing capacity of dynamical systems. *Scientific Reports*, 2, 514. https://doi.org/10.1038/srep00514
-4. Stepney, S. (2024). Physical reservoir computing: A tutorial. *Natural Computing*, 23, 665–685. https://doi.org/10.1007/s11047-024-09997-y
-5. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. *Nature Communications*, 15, 774. https://doi.org/10.1038/s41467-024-44856-5
-6. Mordvintsev, A., Randazzo, E., Niklasson, E., & Levin, M. (2020). Growing Neural Cellular Automata. *Distill*, 5(2), e00023. https://doi.org/10.23915/distill.00023
-7. Pajouheshgar, E., Kim, H., Süsstrunk, S., Jakob, W., & Park, J. (2026). Neural Particle Automata: Learning Self-Organizing Particle Dynamics. *SIGGRAPH 2026*. https://doi.org/10.1145/3799902.3811052
-8. Li, J., Bauer, R., Rentzeperis, I., & van Leeuwen, C. (2024). Adaptive rewiring: A general principle for neural network development. *Frontiers in Network Physiology*, 4, 1410092. https://doi.org/10.3389/fnetp.2024.1410092
-9. Holtmaat, A., & Svoboda, K. (2009). Experience-dependent structural synaptic plasticity in the mammalian brain. *Nature Reviews Neuroscience*, 10, 647–658. https://doi.org/10.1038/nrn2699
-10. Ofria, C., & Wilke, C. O. (2004). Avida: A software platform for research in computational evolutionary biology. *Artificial Life*, 10(2), 191–229. https://doi.org/10.1162/106454604773563612
-11. Lenski, R. E., Ofria, C., Pennock, R. T., & Adami, C. (2003). The evolutionary origin of complex features. *Nature*, 423, 139–144. https://doi.org/10.1038/nature01568
-12. Klapp, S. H. L. (2023). Non-reciprocal interaction for living matter. *Nature Nanotechnology*, 18, 8–9. https://doi.org/10.1038/s41565-022-01268-0
-13. Shi, Y.-B., Moessner, R., Alert, R., et al. (2026). Hamiltonian description of non-reciprocal interactions. *Nature Physics*, 22, 1350–1359. https://doi.org/10.1038/s41567-026-03317-0
+1. Jaeger, H. (2001). _The Echo State Approach to Analysing and Training Recurrent Neural Networks_. GMD Report 148.
+2. Maass, W., Natschläger, T., & Markram, H. (2002). Real-time computing without stable states. _Neural Computation_, 14(11), 2531–2560. <https://doi.org/10.1162/089976602760407955>
+3. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information processing capacity of dynamical systems. _Scientific Reports_, 2, 514. <https://doi.org/10.1038/srep00514>
+4. Stepney, S. (2024). Physical reservoir computing: A tutorial. _Natural Computing_, 23, 665–685. <https://doi.org/10.1007/s11047-024-09997-y>
+5. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. _Nature Communications_, 15, 774. <https://doi.org/10.1038/s41467-024-44856-5>
+6. Mordvintsev, A., Randazzo, E., Niklasson, E., & Levin, M. (2020). Growing Neural Cellular Automata. _Distill_, 5(2), e00023. <https://doi.org/10.23915/distill.00023>
+7. Pajouheshgar, E., Kim, H., Süsstrunk, S., Jakob, W., & Park, J. (2026). Neural Particle Automata: Learning Self-Organizing Particle Dynamics. _SIGGRAPH 2026_. <https://doi.org/10.1145/3799902.3811052>
+8. Li, J., Bauer, R., Rentzeperis, I., & van Leeuwen, C. (2024). Adaptive rewiring: A general principle for neural network development. _Frontiers in Network Physiology_, 4, 1410092. <https://doi.org/10.3389/fnetp.2024.1410092>
+9. Holtmaat, A., & Svoboda, K. (2009). Experience-dependent structural synaptic plasticity in the mammalian brain. _Nature Reviews Neuroscience_, 10, 647–658. <https://doi.org/10.1038/nrn2699>
+10. Ofria, C., & Wilke, C. O. (2004). Avida: A software platform for research in computational evolutionary biology. _Artificial Life_, 10(2), 191–229. <https://doi.org/10.1162/106454604773563612>
+11. Lenski, R. E., Ofria, C., Pennock, R. T., & Adami, C. (2003). The evolutionary origin of complex features. _Nature_, 423, 139–144. <https://doi.org/10.1038/nature01568>
+12. Klapp, S. H. L. (2023). Non-reciprocal interaction for living matter. _Nature Nanotechnology_, 18, 8–9. <https://doi.org/10.1038/s41565-022-01268-0>
+13. Shi, Y.-B., Moessner, R., Alert, R., et al. (2026). Hamiltonian description of non-reciprocal interactions. _Nature Physics_, 22, 1350–1359. <https://doi.org/10.1038/s41567-026-03317-0>
 
 ---
 

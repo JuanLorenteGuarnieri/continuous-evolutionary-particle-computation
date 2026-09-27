@@ -35,6 +35,7 @@ The system is not a fixed-dimensional ordinary differential equation. It is a st
 \[
 \mathcal P_{n+1}
 =
+
 \mathcal F(\mathcal P_n,u_n,E_{n-1},\xi_n).
 \]
 
@@ -95,6 +96,7 @@ The velocity update is
 \[
 \mathbf v_{n+1}
 =
+
 \left(1-\frac{\gamma\Delta t}{m}\right)\mathbf v_n
 +
 \frac{\Delta t}{m}\mathbf F_n.
@@ -271,6 +273,7 @@ Health satisfies
 \[
 H_i^{n+1}
 =
+
 \operatorname{clip}
 (H_i^n+\beta_iR_i^n-\lambda_iP_n,0,H_{max,i}).
 \]
@@ -280,6 +283,7 @@ Ignoring clipping for analysis, the expected drift is
 \[
 \mathbb E[\Delta H_i]
 =
+
 \beta_i\Pr(R_i=1)-\lambda_i\mathbb E[P].
 \]
 
@@ -388,6 +392,7 @@ Let \(n_g(n)\) be the number of particles associated with genotype class \(g\). 
 \[
 n_g(n+1)
 =
+
 n_g(n)+B_g(n)-D_g(n)+M_g(n),
 \]
 
@@ -656,6 +661,7 @@ but the ideal counterfactual contribution would resemble
 \[
 \Delta_i
 =
+
 L(\text{without }i)-L(\text{with }i).
 \]
 
@@ -802,6 +808,7 @@ Important dimensionless ratios include:
 \[
 \chi_{birth-death}
 =
+
 \frac{\mathbb E[B]}{\mathbb E[D]},
 \]
 
@@ -815,6 +822,7 @@ and
 \[
 \chi_{turnover}
 =
+
 \frac{\text{births+deaths per unit time}}
 {N}.
 \]
@@ -1045,7 +1053,6 @@ The final causal link should be tested through ablation.
 
 ---
 
-
 # 30. Stage III Master Theoretical Synthesis
 
 Stage III closes the current theoretical programme at four linked levels: (A) well-posedness and boundedness, (B) population/evolutionary dynamics, (C) computational dynamics, and (D) stability–plasticity/continual adaptation.
@@ -1143,6 +1150,7 @@ Ignoring clipping for local reasoning,
 \[
 \mathbb E[\Delta H_i]
 =
+
 \beta_i\rho_i-\lambda_i\mathbb E[P(E)],
 \]
 
@@ -1329,18 +1337,18 @@ Theoretical analysis now supports the following restrained statement:
 # References
 
 1. Jaeger, H. (2001). *The Echo State Approach to Analysing and Training Recurrent Neural Networks*. GMD Report 148.
-2. Maass, W., Natschläger, T., & Markram, H. (2002). Real-time computing without stable states. *Neural Computation*, 14(11), 2531–2560. https://doi.org/10.1162/089976602760407955
-3. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information processing capacity of dynamical systems. *Scientific Reports*, 2, 514. https://doi.org/10.1038/srep00514
-4. Stepney, S. (2024). Physical reservoir computing: A tutorial. *Natural Computing*, 23, 665–685. https://doi.org/10.1007/s11047-024-09997-y
-5. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. *Nature Communications*, 15, 774. https://doi.org/10.1038/s41467-024-44856-5
-6. Mordvintsev, A., Randazzo, E., Niklasson, E., & Levin, M. (2020). Growing Neural Cellular Automata. *Distill*, 5(2), e00023. https://doi.org/10.23915/distill.00023
-7. Pajouheshgar, E., Kim, H., Süsstrunk, S., Jakob, W., & Park, J. (2026). Neural Particle Automata: Learning Self-Organizing Particle Dynamics. *SIGGRAPH 2026*. https://doi.org/10.1145/3799902.3811052
-8. Li, J., Bauer, R., Rentzeperis, I., & van Leeuwen, C. (2024). Adaptive rewiring: A general principle for neural network development. *Frontiers in Network Physiology*, 4, 1410092. https://doi.org/10.3389/fnetp.2024.1410092
-9. Holtmaat, A., & Svoboda, K. (2009). Experience-dependent structural synaptic plasticity in the mammalian brain. *Nature Reviews Neuroscience*, 10, 647–658. https://doi.org/10.1038/nrn2699
-10. Ofria, C., & Wilke, C. O. (2004). Avida: A software platform for research in computational evolutionary biology. *Artificial Life*, 10(2), 191–229. https://doi.org/10.1162/106454604773563612
-11. Lenski, R. E., Ofria, C., Pennock, R. T., & Adami, C. (2003). The evolutionary origin of complex features. *Nature*, 423, 139–144. https://doi.org/10.1038/nature01568
-12. Klapp, S. H. L. (2023). Non-reciprocal interaction for living matter. *Nature Nanotechnology*, 18, 8–9. https://doi.org/10.1038/s41565-022-01268-0
-13. Shi, Y.-B., Moessner, R., Alert, R., et al. (2026). Hamiltonian description of non-reciprocal interactions. *Nature Physics*, 22, 1350–1359. https://doi.org/10.1038/s41567-026-03317-0
+2. Maass, W., Natschläger, T., & Markram, H. (2002). Real-time computing without stable states. *Neural Computation*, 14(11), 2531–2560. <https://doi.org/10.1162/089976602760407955>
+3. Dambre, J., Verstraeten, D., Schrauwen, B., & Massar, S. (2012). Information processing capacity of dynamical systems. *Scientific Reports*, 2, 514. <https://doi.org/10.1038/srep00514>
+4. Stepney, S. (2024). Physical reservoir computing: A tutorial. *Natural Computing*, 23, 665–685. <https://doi.org/10.1007/s11047-024-09997-y>
+5. Wang, X., & Cichos, F. (2024). Harnessing synthetic active particles for physical reservoir computing. *Nature Communications*, 15, 774. <https://doi.org/10.1038/s41467-024-44856-5>
+6. Mordvintsev, A., Randazzo, E., Niklasson, E., & Levin, M. (2020). Growing Neural Cellular Automata. *Distill*, 5(2), e00023. <https://doi.org/10.23915/distill.00023>
+7. Pajouheshgar, E., Kim, H., Süsstrunk, S., Jakob, W., & Park, J. (2026). Neural Particle Automata: Learning Self-Organizing Particle Dynamics. *SIGGRAPH 2026*. <https://doi.org/10.1145/3799902.3811052>
+8. Li, J., Bauer, R., Rentzeperis, I., & van Leeuwen, C. (2024). Adaptive rewiring: A general principle for neural network development. *Frontiers in Network Physiology*, 4, 1410092. <https://doi.org/10.3389/fnetp.2024.1410092>
+9. Holtmaat, A., & Svoboda, K. (2009). Experience-dependent structural synaptic plasticity in the mammalian brain. *Nature Reviews Neuroscience*, 10, 647–658. <https://doi.org/10.1038/nrn2699>
+10. Ofria, C., & Wilke, C. O. (2004). Avida: A software platform for research in computational evolutionary biology. *Artificial Life*, 10(2), 191–229. <https://doi.org/10.1162/106454604773563612>
+11. Lenski, R. E., Ofria, C., Pennock, R. T., & Adami, C. (2003). The evolutionary origin of complex features. *Nature*, 423, 139–144. <https://doi.org/10.1038/nature01568>
+12. Klapp, S. H. L. (2023). Non-reciprocal interaction for living matter. *Nature Nanotechnology*, 18, 8–9. <https://doi.org/10.1038/s41565-022-01268-0>
+13. Shi, Y.-B., Moessner, R., Alert, R., et al. (2026). Hamiltonian description of non-reciprocal interactions. *Nature Physics*, 22, 1350–1359. <https://doi.org/10.1038/s41567-026-03317-0>
 
 ---
 

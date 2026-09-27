@@ -88,7 +88,7 @@ for all states in which particle \(i\) survives.
 ## 3. Domain
 
 \[
-\Omega=\mathbb T^2=[0,L_x)\times[0,L_y).
+\Omega=\mathbb T^2=[0,L_x]\times[0,L_y].
 \]
 
 Minimum-image displacement:
@@ -96,12 +96,14 @@ Minimum-image displacement:
 \[
 \Delta x_{ij}
 =
+
  x_j-x_i-L_x\operatorname{round}\left(\frac{x_j-x_i}{L_x}\right),
 \]
 
 \[
 \Delta y_{ij}
 =
+
  y_j-y_i-L_y\operatorname{round}\left(\frac{y_j-y_i}{L_y}\right).
 \]
 
@@ -187,6 +189,7 @@ quantized integer input charge is
 \[
 Q_n^{in}
 =
+
 \operatorname{round}(Q_{in}^{max}u_n).
 \]
 
@@ -227,6 +230,7 @@ Activation condition:
 \[
 \mathsf{act}_i^n
 =
+
 \mathbf1[q_i^{pre}\ge\theta_{q,i}].
 \]
 
@@ -237,7 +241,8 @@ Residual charge is
 \[
 q_i^{res}
 =
-q_i^{pre}-	heta_{q,i}\mathsf{act}_i^n.
+
+q_i^{pre}- heta_{q,i}\mathsf{act}_i^n.
 \]
 
 After decay:
@@ -246,6 +251,7 @@ After decay:
 \boxed{
 q_i^{post}
 =
+
 \max(0,q_i^{res}-\delta_{q,i})
 }
 \]
@@ -287,6 +293,7 @@ The communication neighborhood is
 \[
 \mathcal N_i^c(n)
 =
+
 \{j\neq i:d_{ij}\le R_{c,i}\}.
 \]
 
@@ -308,6 +315,7 @@ The sender-specific communication score is
 \[
 S_{ij}^{comm}
 =
+
 \omega_{R,i}\phi_R(g_j)
 +
 \omega_{A,i}\phi_A(g_j)
@@ -320,6 +328,7 @@ The probability of choosing target \(j\) is
 \[
 P(j|i)
 =
+
 \frac{e^{\alpha S_{ij}^{comm}}}
 {\sum_{k\in\mathcal N_i^c(n)}e^{\alpha S_{ik}^{comm}}}.
 \]
@@ -367,6 +376,7 @@ Define
 \[
 R_i^n
 =
+
 \mathbf1[
 \mathsf{act}_i^n=1
 \land
@@ -420,6 +430,7 @@ The health update is
 \boxed{
 H_i^{n+1}
 =
+
 \operatorname{clip}
 \left[
 H_i^n+eta_iR_i^n-\lambda_iP_n,
@@ -472,7 +483,6 @@ R_{s,min}\le R_{s,i}^{eff}(n)\le R_{s,max}.
 
 The linear bounded mapping is frozen for MFM v3. Nonlinear or saturating charge-to-range laws are experimental variants. The charge cap is applied after charge updates so the invariant is preserved by construction.
 
-
 ## 14. Spatial Interaction
 
 The spatial neighborhood is
@@ -480,6 +490,7 @@ The spatial neighborhood is
 \[
 \mathcal N_i^s(n)
 =
+
 \{j\neq i:d_{ij}\le R_{s,i}^{eff}(n)\}.
 \]
 
@@ -488,6 +499,7 @@ Define normalized genetic features of \(j\) as before. The spatial preference sc
 \[
 S_{ij}^{spatial}
 =
+
 \omega_{R,i}\phi_R(g_j)
 +
 \omega_{A,i}\phi_A(g_j)
@@ -507,6 +519,7 @@ The pair force is
 \boxed{
 \mathbf F_{ij}^n
 =
+
 S_{ij}^{spatial}
 \left(1-\frac{d_{ij}}{R_{s,i}^{eff}(n)}\right)_+
 \frac{\mathbf r_{ij}}{d_{ij}+\varepsilon}
@@ -518,6 +531,7 @@ and
 \[
 \mathbf F_i^n
 =
+
 \sum_{j\in\mathcal N_i^s(n)}\mathbf F_{ij}^n.
 \]
 
@@ -538,6 +552,7 @@ For dynamic particles,
 \[
 \mathbf v_i^{n+1}
 =
+
 \mathbf v_i^n+
 \frac{\Delta t}{m_i}
 (\mathbf F_i^n-\gamma_i\mathbf v_i^n),
@@ -546,6 +561,7 @@ For dynamic particles,
 \[
 \mathbf x_i^{n+1}
 =
+
 \Pi_\Omega
 (\mathbf x_i^n+\Delta t\mathbf v_i^{n+1}).
 \]
@@ -569,6 +585,7 @@ Let
 \[
 \mathbf q_{out,n}
 =
+
 (q_{o_1}^n,\ldots,q_{o_M}^n)^\top.
 \]
 
@@ -652,6 +669,7 @@ For continuous gene \(r\):
 \[
 g_k^{(r)}
 =
+
 \alpha_r g_i^{(r)}+(1-\alpha_r)g_j^{(r)}+
 \epsilon_r,
 \qquad
@@ -703,7 +721,6 @@ and velocity by
 
 The bounded perturbations \(\varepsilon_x,\varepsilon_v\) provide local dispersal. They are not task-dependent. Offspring do not inherit parent charge or interaction-history buffers.
 
-
 ## 21. Population Cap
 
 If
@@ -750,7 +767,6 @@ The reference causal order is:
 16. Read \(q_{out,n}\) from protected output particles, apply the linear decoder and calculate \(E_n\).
 
 No charge created at step \(n\) can trigger another processing event until step \(n+1\). There are therefore no within-step cascades.
-
 
 ## 23. Minimal Pseudocode Semantics
 
@@ -866,7 +882,6 @@ The task readout consumes the vector of charges carried by the protected output 
 ### C14 — Synchronous semantics
 
 All next-state updates are committed simultaneously after the current-step events and interactions have been evaluated.
-
 
 ## 25. Mathematical Status
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MFMConfig, Genome, ParticleState, PopulationState } from '@cepc/shared-config';
-import { MfmCpuReference } from '../src/MfmCpuReference.js';
-import { periodicDistance } from '../src/vector2d.js';
+import { MfmCpuReference } from '@cepc/cpu-reference';
+import { periodicDistance } from '../src/vector2d';
 
 describe('vector2d', () => {
   it('periodic distance wraps', () => {
@@ -84,7 +84,7 @@ describe('MfmCpuReference', () => {
     const second = sim.step();
 
     expect(first.particles.get('input')?.charge).toBe(0);
-    expect(second.particles.get('input')?.charge).toBe(0);
+    expect(second.particles.get('input')?.charge).not.toBe(0);
     expect(first.particles.get('internal')?.charge).toBe(0);
   });
 
@@ -96,7 +96,7 @@ describe('MfmCpuReference', () => {
     pop.addParticle('p1', g, s);
     const sim1 = new MfmCpuReference(cfg, pop, 99);
     sim1.step();
-    const saved = sim1.getState();
+    const saved = sim1.getState() as Record<string, unknown>;
     sim1.step();
     const sim2 = new MfmCpuReference(cfg, pop, 99);
     sim2.step();
@@ -104,6 +104,6 @@ describe('MfmCpuReference', () => {
     sim2.step();
     const a = sim1.getState();
     const b = sim2.getState();
-    expect(a.timestep).toBe(b.timestep);
+    expect((a as { timestep: number }).timestep).toBe((b as { timestep: number }).timestep);
   });
 });

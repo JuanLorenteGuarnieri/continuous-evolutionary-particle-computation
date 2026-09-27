@@ -1,6 +1,6 @@
 import { ParticleState, PopulationState } from '@cepc/shared-config';
-import { XorShift32 } from './prng.js';
-import { periodicDelta, periodicDistance, wrap } from './vector2d.js';
+import { XorShift32 } from './prng';
+import { periodicDelta, periodicDistance, wrap } from './vector2d';
 const EPSILON = 1e-6;
 let DEBUG_MFM_CPU_PROFILING = false;
 const cpuProfileStats = new Map();

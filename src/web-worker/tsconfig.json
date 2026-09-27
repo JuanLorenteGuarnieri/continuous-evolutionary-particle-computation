@@ -1,13 +1,9 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "declaration": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "sourceMap": true,
     "module": "ESNext",
     "target": "ES2022",
-    "ignoreDeprecations": "5.0"
+    "types": ["@webgpu/types"]
   },
   "include": ["src/**/*"]
 }

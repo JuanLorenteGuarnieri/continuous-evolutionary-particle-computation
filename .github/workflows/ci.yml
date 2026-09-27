@@ -1,47 +1,79 @@
- name: CI
- 
- on:
-   push:
-     branches: [ main ]
-   pull_request:
-     branches: [ main ]
- 
- jobs:
-   test:
-     runs-on: ubuntu-latest
-     steps:
-       - uses: actions/checkout@v4
-       - name: Setup Node
-         uses: actions/setup-node@v4
-         with:
-           node-version: 22
-       - name: Setup pnpm
-         uses: pnpm/action-setup@v3
-         with:
-           version: 8.15.9
-       - name: Install dependencies
-         run: pnpm install
-       - name: Lint
-         run: pnpm run lint
-       - name: Test TS
-         run: pnpm test
-       - name: Build Vite
-         run: pnpm run build
-       - name: Setup C++
-         run: |
-           sudo apt-get update
-           sudo apt-get install -y cmake g++
-       - name: Configure C++
-         run: cmake -S src/cpp-oracle -B build
-       - name: Build C++
-         run: cmake --build build
-       - name: Test C++
-         run: ctest --test-dir build --output-on-failure
-       - name: Setup Python
-         uses: actions/setup-python@v5
-         with:
-           python-version: '3.11'
-       - name: Install Python deps
-         run: pip install -r python/requirements.txt
-       - name: Test Python
-         run: pytest python/
+name: CI
+
+# Consolidated from the previous ci.yml + ci-cd.yml (Phase 13), which ran on
+# the same triggers and duplicated install/lint/test/C++/Python setup. This
+# file is a strict superset of both: every step either file used to run is
+# still run here. See docs/phases/13-phase13-audit.md for why.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8.15.9
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm run lint
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Test TS
+        run: pnpm test
+      - name: Build Vite
+        run: pnpm run build
+      - name: Setup C++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+      - name: Configure C++
+        run: cmake -S src/cpp-oracle -B build
+      - name: Build C++
+        run: cmake --build build
+      - name: Test C++
+        run: ctest --test-dir build --output-on-failure
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python deps
+        run: pip install -r python/requirements.txt
+      - name: Test Python
+        run: pytest python/
+      # The steps below duplicate parts of the blanket "Test TS" step above
+      # (pnpm test already fans out to every workspace package, including
+      # these). They are kept, not removed, because they make it possible to
+      # see which specific package failed at a glance in the Actions UI, and
+      # because ci-cd.yml's "|| echo skipped" tolerance for the WebGPU
+      # packages is being preserved as a safety net until a real CI run
+      # confirms the Phase 13 import fixes (see the audit) are sufficient on
+      # their own. If pnpm test above ever starts failing while these still
+      # report OK, that mismatch is itself worth investigating.
+      - name: Run behavioral tests
+        run: pnpm test --filter behavioral
+      - name: Run WebGPU tests
+        run: pnpm test --filter @cepc/webgpu-core || echo 'WebGPU tests skipped/failed independently of the main run (see comment above)'
+      - name: Run WebGPU MFM tests
+        run: pnpm test --filter @cepc/webgpu-mfm || echo 'WebGPU MFM tests skipped/failed independently of the main run (see comment above)'
+      - name: Run experiment API tests
+        run: pnpm test --filter @cepc/experiment-api
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/test-results/**
+            **/coverage/

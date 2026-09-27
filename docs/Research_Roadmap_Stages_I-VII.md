@@ -532,24 +532,31 @@ Establish whether the mechanism actually produces useful computation and adaptat
 ## Phased sequence
 
 ### VI-0 — Fixed/non-evolving medium
+
 Determine whether a temporal computational substrate exists before evolution.
 
 ### VI-1 — Add health and death
+
 Test whether local cycle completion produces persistent selection pressure.
 
 ### VI-2 — Add local reproduction
+
 Test demographic persistence and phenotype amplification.
 
 ### VI-3 — Add mutation
+
 Test variation, diversity and mutation phase boundaries.
 
 ### VI-4 — Add global error modulation
+
 Test stability–plasticity coupling.
 
 ### VI-5 — Continual recurrence and drift
+
 Use A→B→A, multiple recurring regimes and gradual drift.
 
 ### VI-6 — Damage and recovery
+
 Delete controlled fractions of internal particles and measure recovery.
 
 ## Go/no-go criteria

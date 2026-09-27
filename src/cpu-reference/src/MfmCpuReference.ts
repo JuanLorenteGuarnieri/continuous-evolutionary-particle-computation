@@ -1,6 +1,6 @@
 import { Genome, MFMConfig, ParticleState, PopulationState } from '@cepc/shared-config';
-import { XorShift32 } from './prng.js';
-import { periodicDelta, periodicDistance, wrap } from './vector2d.js';
+import { XorShift32 } from './prng';
+import { periodicDelta, periodicDistance, wrap } from './vector2d';
 const EPSILON = 1e-6;
 
 let DEBUG_MFM_CPU_PROFILING = false;
@@ -208,7 +208,7 @@ export class MfmCpuReference {
 
   private selectTargets(sender: Snapshot, snapshot: Snapshot[]): Snapshot[] {
     if (sender.state.role === 'output') return [];
-    const remaining = snapshot.filter(item => item.id !== sender.id && periodicDistance(
+    const remaining = snapshot.filter(item => item.id !== sender.id && item.state.role !== 'input' && periodicDistance(
       sender.state.position, item.state.position, this.config.Lx, this.config.Ly
     ) <= sender.genome.R_c);
     const selected: Snapshot[] = [];
@@ -318,4 +318,3 @@ forceY += forceFactor * delta.y;
   private feature(value: number, scale: number): number { return Math.max(0, Math.min(1, value / scale)); }
   private clip(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }
 }
-
