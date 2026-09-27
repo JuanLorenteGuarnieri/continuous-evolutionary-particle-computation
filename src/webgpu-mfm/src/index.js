@@ -1,2 +1,2 @@
-export * from './MfmWebGPUStepper.js';
-export * from './buffers.js';
+export * from './MfmWebGPUStepper';
+export * from './buffers';
