@@ -4,7 +4,9 @@ import { MfmCpuReference } from '@cepc/cpu-reference';
 import { RenderPipeline } from '@cepc/webgpu-core';
 import { MetricsReducer } from '@cepc/webgpu-core';
 import { ParticleState, PopulationState, Genome, MFMConfig, ParticleID } from '@cepc/shared-config';
-import { MfmWebGPUStepper } from '@cepc/webgpu-mfm';
+import { MfmWebGPUStepper, CpuSectionProfiler, aggregateCpuRecords } from '@cepc/webgpu-mfm';
+import { createBenchmarkScenario } from '@cepc/shared-config';
+import type { BenchmarkParameters } from '@cepc/shared-config';
 
 type GPUCanvasContext = {
   configure(options: { device: GPUDevice; format: string; alphaMode?: string }): void;
@@ -15,10 +17,14 @@ type WorkerGPUAdapter = {
   readonly limits: {
     readonly maxStorageBuffersPerShaderStage: number;
   };
+  // Phase 14: feature-detect timestamp-query support before requesting it.
+  // GPUSupportedFeatures is Set-like; `has()` is all this file relies on.
+  readonly features?: { has(name: string): boolean };
   requestDevice(descriptor?: {
     requiredLimits?: {
       maxStorageBuffersPerShaderStage?: number;
     };
+    requiredFeatures?: string[];
   }): Promise<GPUDevice>;
 };
 
@@ -57,6 +63,12 @@ let backend: 'CPU' | 'WebGPU' = 'CPU';
 let webgpuContext: GPUCanvasContext | null = null;
 const globalError = 5.5;
 let frameInFlight = false;
+
+// Phase 14 instrumentation. Both are no-ops unless a benchmark run or
+// 'setProfiling' explicitly turns them on; the disabled cost is one
+// module-level null check per instrumented site.
+let workerProfiler: CpuSectionProfiler | null = null;
+let benchmarkRunning = false;
 
 let currentConfig: MFMConfig | null = null;
 let initializationRandomState = 1;
@@ -292,7 +304,10 @@ async function advanceSimulationStep(): Promise<void> {
   if (!simulation) return;
   injectInputSignal();
   setGlobalErrorInSimulation();
+  const wp = workerProfiler;
+  const t = wp ? wp.now() : 0;
   await simulation.step();
+  wp?.since('worker.headlessStepMs', t);
   population = simulation.getPopulation();
   timestep++;
 }
@@ -313,11 +328,15 @@ async function encodeAndSubmitWebGPUStep(): Promise<void> {
   // Compute and render are encoded into the SAME command buffer. WebGPU
   // preserves their submission order, so the render pass observes the writes
   // performed by the compute passes in this timestep.
+  const wp = workerProfiler;
   const commandEncoder = device.createCommandEncoder({
     label: `cepc-frame-step-${timestep}`,
   });
+  const tEncode = wp ? wp.now() : 0;
   const encoded = await simulation.encodeStep(commandEncoder);
+  wp?.since('worker.encodeStepMs', tEncode);
 
+  const tRenderEncode = wp ? wp.now() : 0;
   renderPipeline.setParticleBuffers(encoded.renderState);
 
   const renderContext = webgpuContext;
@@ -327,19 +346,48 @@ async function encodeAndSubmitWebGPUStep(): Promise<void> {
     renderContext.getCurrentTexture().createView() as GPUTextureView,
     encoded.renderState.particleCount,
   );
+  wp?.since('worker.renderEncodeMs', tRenderEncode);
 
+  const tSubmit = wp ? wp.now() : 0;
   device.queue.submit([commandEncoder.finish()]);
+  simulation.notifyStepSubmitted();
+  wp?.since('worker.submitMs', tSubmit);
   // OffscreenCanvas.transferToImageBitmap() must observe the completed render
   // work. Waiting here also makes the simulation/render/frame hand-off
   // deterministic instead of relying on implicit queue completion.
+  const tWait = wp ? wp.now() : 0;
   await device.queue.onSubmittedWorkDone();
+  if (wp) {
+    wp.since('worker.onSubmittedWorkDoneMs', tWait);
+    wp.inc('worker.onSubmittedWorkDoneCalls');
+  }
 
   // 5G-H: normal synchronization updates only population topology/event
   // metadata. Positions, velocities, health and charge remain GPU-owned.
+  const tFinish = wp ? wp.now() : 0;
   const normalPopulation = await encoded.finishNormalSync();
+  wp?.since('worker.finishNormalSyncMs', tFinish);
   population = mergeNormalPopulationTopology(normalPopulation);
   timestep++;
 
+}
+
+/**
+ * Phase 14: headless per-step path for the WebGPU backend (encode + submit +
+ * normal sync, no render pass, no onSubmittedWorkDone wait). Mirrors
+ * `advanceSimulationStep()` for the CPU backend so the two backends can be
+ * A/B compared with rendering removed from the critical path. Never used by
+ * the interactive app; only by 'runBenchmark' with renderEnabled=false.
+ */
+async function advanceHeadlessWebGPUStep(): Promise<void> {
+  if (!(simulation instanceof MfmWebGPUStepper)) return;
+  injectInputSignal();
+  setGlobalErrorInSimulation();
+  const wp = workerProfiler;
+  const t = wp ? wp.now() : 0;
+  population = await simulation.step();
+  wp?.since('worker.headlessStepMs', t);
+  timestep++;
 }
 
 // Add method to inject input into simulation
@@ -783,6 +831,190 @@ async function renderAndSendBack() {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Phase 14 — benchmark harness
+// ---------------------------------------------------------------------------
+//
+// Runs the *real* per-step path (the same functions the interactive app
+// uses) against a deterministic scenario, with CPU/GPU instrumentation
+// enabled only for the duration of the run. Bypasses renderAndSendBack()
+// and the 'frame' canvas protocol entirely: the benchmark does not need a
+// displayed frame, only the same encode/submit/sync work the app performs.
+//
+// A run replaces the worker's current population/config/simulation (mirrors
+// what 'setBackend' already does when switching backends) and disposes the
+// previous GPU simulation first so that repeated runs in one worker/page
+// session do not leak GPUBuffers/pipelines.
+
+interface BenchmarkRunOptions {
+  particleCount: number;
+  capacity?: number;
+  density?: number;
+  seed?: number;
+  steps: number;
+  warmupSteps: number;
+  stepsPerFrame: number;
+  renderEnabled: boolean;
+  metricsEnabled: boolean;
+  gpuTimestamps: boolean;
+  parameterOverrides?: Partial<BenchmarkParameters>;
+}
+
+async function describeAdapter(): Promise<Record<string, unknown> | null> {
+  try {
+    const info = (device as unknown as { adapterInfo?: Record<string, unknown> })?.adapterInfo;
+    if (!info) return null;
+    // GPUAdapterInfo fields are individually optional depending on the
+    // implementation; copy only what is present rather than assuming a shape.
+    return {
+      vendor: info.vendor ?? null,
+      architecture: info.architecture ?? null,
+      device: info.device ?? null,
+      description: info.description ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function runBenchmark(options: BenchmarkRunOptions): Promise<Record<string, unknown>> {
+  if (benchmarkRunning) {
+    throw new Error('A benchmark run is already in progress in this worker');
+  }
+  benchmarkRunning = true;
+  try {
+    const scenario = createBenchmarkScenario({
+      particleCount: options.particleCount,
+      capacity: options.capacity,
+      density: options.density,
+      seed: options.seed,
+      overrides: options.parameterOverrides,
+    });
+
+    disposeSimulation();
+    currentConfig = scenario.config;
+    population = scenario.population;
+    timestep = 0;
+    recreateSimulationForBackend();
+
+    const usingWebGPU = simulation instanceof MfmWebGPUStepper;
+    if (options.renderEnabled && usingWebGPU) {
+      const ready = await ensureWebGPURendererReady();
+      if (!ready) {
+        throw new Error('WebGPU renderer is not ready; cannot benchmark with renderEnabled=true');
+      }
+    }
+
+    let profilingInfo = { cpu: true, gpuTimestamps: false, gpuTimestampsSupported: false };
+    if (usingWebGPU) {
+      profilingInfo = (simulation as MfmWebGPUStepper).enableProfiling({
+        cpu: true,
+        gpuTimestamps: options.gpuTimestamps,
+      });
+    }
+    workerProfiler = new CpuSectionProfiler();
+
+    const stepOnce = async (): Promise<void> => {
+      if (usingWebGPU) {
+        if (options.renderEnabled) await encodeAndSubmitWebGPUStep();
+        else await advanceHeadlessWebGPUStep();
+      } else {
+        await advanceSimulationStep();
+      }
+    };
+
+    for (let i = 0; i < options.warmupSteps; i++) {
+      for (let j = 0; j < options.stepsPerFrame; j++) await stepOnce();
+    }
+    if (usingWebGPU) {
+      await (simulation as MfmWebGPUStepper).resetProfiling();
+    }
+    workerProfiler.reset();
+
+    const t0 = performance.now();
+    for (let i = 0; i < options.steps; i++) {
+      const wp = workerProfiler;
+      const tFrame = wp.now();
+      for (let j = 0; j < options.stepsPerFrame; j++) await stepOnce();
+      wp.since('worker.frameStepsMs', tFrame);
+
+      if (options.metricsEnabled && usingWebGPU && metricsReducer) {
+        const tMetrics = wp.now();
+        try {
+          const stepper = simulation as MfmWebGPUStepper;
+          const current = stepper.getRenderState();
+          metricsReducer.setBuffers(current.health, current.charge, current.particleCount);
+          await metricsReducer.computeMetrics();
+          await stepper.readChargeMetrics();
+        } catch {
+          // A metrics failure should not abort the benchmark run; the frame
+          // is simply not counted in the metrics timing for this iteration.
+        }
+        wp.since('worker.metricsMs', tMetrics);
+      }
+      wp.commitStep();
+    }
+    const wallMs = performance.now() - t0;
+
+    if (usingWebGPU) {
+      await (simulation as MfmWebGPUStepper).collectGpuTimings();
+    }
+
+    const cpuAggregate = aggregateCpuRecords(workerProfiler.getRecords());
+    const stepperReport = usingWebGPU ? (simulation as MfmWebGPUStepper).getProfilingReport() : null;
+
+    if (usingWebGPU) {
+      await (simulation as MfmWebGPUStepper).disableProfiling();
+    }
+    workerProfiler = null;
+
+    const totalSteps = options.steps * options.stepsPerFrame;
+    const frameWallMs = cpuAggregate.sections.find((section) => section.section === 'worker.frameStepsMs')
+      ?.perStepMs ?? null;
+
+    return {
+      schemaVersion: 1,
+      kind: 'webgpu-worker',
+      generatedAt: new Date().toISOString(),
+      environment: {
+        backend,
+        userAgent:
+          (self as unknown as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? 'unknown',
+        adapterInfo: usingWebGPU ? await describeAdapter() : null,
+      },
+      method: {
+        particleCount: scenario.particleCount,
+        capacity: scenario.capacity,
+        density: scenario.density,
+        domain: { Lx: scenario.Lx, Ly: scenario.Ly },
+        seed: scenario.seed,
+        steps: options.steps,
+        stepsPerFrame: options.stepsPerFrame,
+        warmupSteps: options.warmupSteps,
+        renderEnabled: options.renderEnabled,
+        metricsEnabled: options.metricsEnabled,
+        gpuTimestampsRequested: options.gpuTimestamps,
+        gpuTimestampsSupported: profilingInfo.gpuTimestampsSupported,
+        gpuTimestampsEnabled: profilingInfo.gpuTimestamps,
+      },
+      wallMs,
+      stepsPerSecond: totalSteps / (wallMs / 1000),
+      // Uses the *initial* particle count as a proxy; see cpu.counters for
+      // population.deaths / population.births / population.structureChanged
+      // to judge how much the population actually drifted during the run.
+      particleStepsPerSecond: (totalSteps * scenario.particleCount) / (wallMs / 1000),
+      frameWallMs,
+      cpu: cpuAggregate,
+      gpu: stepperReport?.gpu ?? null,
+      gpuTimestamps: stepperReport?.gpuTimestamps ?? null,
+      stepperCpu: stepperReport?.cpu ?? null,
+    };
+  } finally {
+    benchmarkRunning = false;
+  }
+}
+
 // Message handling from main thread
 self.onmessage = async (event: MessageEvent) => {
   const data = event.data ?? {};
@@ -971,6 +1203,36 @@ self.onmessage = async (event: MessageEvent) => {
         });
       }
       break;
+    case 'runBenchmark': {
+      // Phase 14: dedicated benchmark run. See runBenchmark() above. Not part
+      // of the interactive app's normal message flow.
+      const options = payload as Partial<BenchmarkRunOptions> & { particleCount?: number };
+      try {
+        if (typeof options?.particleCount !== 'number') {
+          throw new Error("runBenchmark requires payload.particleCount");
+        }
+        const result = await runBenchmark({
+          particleCount: options.particleCount,
+          capacity: options.capacity,
+          density: options.density,
+          seed: options.seed,
+          steps: options.steps ?? 20,
+          warmupSteps: options.warmupSteps ?? 5,
+          stepsPerFrame: options.stepsPerFrame ?? 1,
+          renderEnabled: options.renderEnabled ?? true,
+          metricsEnabled: options.metricsEnabled ?? true,
+          gpuTimestamps: options.gpuTimestamps ?? true,
+          parameterOverrides: options.parameterOverrides,
+        });
+        self.postMessage({ type: 'benchmarkResult', payload: result });
+      } catch (error) {
+        self.postMessage({
+          type: 'benchmarkError',
+          payload: { message: error instanceof Error ? error.message : String(error) },
+        });
+      }
+      break;
+    }
   } 
 }; 
  
@@ -1069,14 +1331,23 @@ async function setupRenderBackend() {
       );
     }
 
+    // Phase 14: request 'timestamp-query' only when the adapter advertises it.
+    // Requesting an unsupported feature makes requestDevice() reject, so this
+    // must be feature-detected rather than requested unconditionally. When
+    // unsupported, GpuPassTimestampProfiler self-reports unavailable and the
+    // benchmark harness falls back to CPU-only timing (see profiling.ts).
+    const supportsTimestampQuery = adapter.features?.has('timestamp-query') ?? false;
+
     device = await adapter.requestDevice({
       requiredLimits: {
         maxStorageBuffersPerShaderStage: requiredStorageBuffers,
       },
+      requiredFeatures: supportsTimestampQuery ? ['timestamp-query'] : [],
     });
     if (!device) {
       throw new Error('requestDevice() returned no GPUDevice');
     }
+    console.log(`WebGPU timestamp-query support: ${supportsTimestampQuery ? 'available' : 'unavailable'}.`);
 
     // From this point on, GPU simulation is available independently of the
     // canvas presentation path. Do not throw away the device if rendering

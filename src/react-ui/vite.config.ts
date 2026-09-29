@@ -5,7 +5,18 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: '/continuous-evolutionary-particle-computation/',
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      // Phase 14: the benchmark harness (tools/bench/benchmark-webgpu.mjs)
+      // exercises the production build, so it needs its own emitted entry
+      // alongside the app's index.html.
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        benchmark: resolve(__dirname, 'benchmark.html'),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@worker': resolve(__dirname, '..', 'web-worker', 'src', 'worker.ts'),
@@ -15,4 +26,4 @@ export default defineConfig({
       //   (then you would also need to install and add the plugin)
     }
   }
-});
+});

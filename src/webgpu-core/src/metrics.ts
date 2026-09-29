@@ -11,6 +11,17 @@ export class MetricsReducer {
   private countBuffer: GPUBuffer | null = null;
    private particleCount: number = 0;
 
+   /** Phase 14: opt-in timing of the metrics path (off by default). */
+   public profile = false;
+   public lastSetBuffersMs = 0;
+   public lastTimings: null | {
+     encodeMs: number;
+     submitMs: number;
+     mapWaitMs: number;
+     cpuReduceAndCleanupMs: number;
+     readbackBytes: number;
+   } = null;
+
    constructor(device: GPUDevice) {
      this.device = device;
    }
@@ -80,6 +91,7 @@ export class MetricsReducer {
    }
 
    setBuffers(healthBuffer: GPUBuffer, chargeBuffer: GPUBuffer, particleCount: number) {
+     const tSet = this.profile ? performance.now() : 0;
      this.healthBuffer = healthBuffer;
      this.chargeBuffer = chargeBuffer;
      this.particleCount = particleCount;
@@ -114,6 +126,7 @@ export class MetricsReducer {
      // Update the particle count uniform
      const countData = new Uint32Array([this.particleCount]);
      this.device.queue.writeBuffer(this.countBuffer!, 0, countData);
+     if (this.profile) this.lastSetBuffersMs = performance.now() - tSet;
    }
 
    async computeMetrics(): Promise<{ count: number; healthSum: number; chargeSum: number }> {
@@ -121,6 +134,7 @@ export class MetricsReducer {
        throw new Error('MetricsReducer not initialized');
      }
 
+     const t0 = this.profile ? performance.now() : 0;
      const commandEncoder = this.device.createCommandEncoder();
      const pass = commandEncoder.beginComputePass();
      pass.setPipeline(this.pipeline);
@@ -136,10 +150,13 @@ export class MetricsReducer {
      });
      commandEncoder.copyBufferToBuffer(this.resultBuffer, 0, stagingBuffer, 0, resultSize);
 
+     const t1 = this.profile ? performance.now() : 0;
      const gpuAsync = this.device.queue.submit([commandEncoder.finish()]);
      await gpuAsync;
+     const t2 = this.profile ? performance.now() : 0;
 
      await stagingBuffer.mapAsync(GPUMapMode.READ);
+     const t3 = this.profile ? performance.now() : 0;
      const array = new Float32Array(stagingBuffer.getMappedRange());
      let healthSum = 0;
      let chargeSum = 0;
@@ -150,6 +167,17 @@ export class MetricsReducer {
      const count = this.particleCount;
      stagingBuffer.unmap();
      stagingBuffer.destroy();
+
+     if (this.profile) {
+       const t4 = performance.now();
+       this.lastTimings = {
+         encodeMs: t1 - t0,
+         submitMs: t2 - t1,
+         mapWaitMs: t3 - t2,
+         cpuReduceAndCleanupMs: t4 - t3,
+         readbackBytes: resultSize,
+       };
+     }
 
      return { count, healthSum, chargeSum };
    }

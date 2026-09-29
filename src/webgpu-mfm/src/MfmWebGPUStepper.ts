@@ -1,4 +1,10 @@
 import { Genome, MFMConfig, ParticleState, PopulationState } from '@cepc/shared-config';
+import {
+  CpuSectionProfiler,
+  GpuPassTimestampProfiler,
+  aggregateCpuRecords,
+  aggregateGpuSteps,
+} from './profiling';
 /**
  * GPU implementation of the MFM v3 timestep.
  *
@@ -270,6 +276,13 @@ export class MfmWebGPUStepper {
   private reproductionCompactionPipeline!: PipelineBundle;
   private deathCompactionPipeline!: PipelineBundle;
 
+  /**
+   * Phase 14 instrumentation. Both are null unless enableProfiling() is called,
+   * so the disabled cost is one null check per instrumented site.
+   */
+  private cpuProfiler: CpuSectionProfiler | null = null;
+  private gpuProfiler: GpuPassTimestampProfiler | null = null;
+
   constructor(device: GPUDevice, config: MFMConfig, population: PopulationState, seed?: number) {
     this.device = device;
     this.config = config;
@@ -335,9 +348,19 @@ export class MfmWebGPUStepper {
     const commandEncoder = this.device.createCommandEncoder({
       label: `mfm-v3-step-${this.timestep}`,
     });
+    const prof = this.cpuProfiler;
+    const tEncode = prof ? prof.now() : 0;
     const encoded = await this.prepareEncodedStep(commandEncoder);
+    prof?.since('stepUnsafe.encodeMs', tEncode);
+    const tSubmit = prof ? prof.now() : 0;
     this.device.queue.submit([commandEncoder.finish()]);
-    return encoded.finishNormalSync();
+    this.gpuProfiler?.afterSubmit();
+    prof?.since('stepUnsafe.submitMs', tSubmit);
+    if (!prof) return encoded.finishNormalSync();
+    const tFinish = prof.now();
+    const result = await encoded.finishNormalSync();
+    prof.since('stepUnsafe.finishNormalSyncMs', tFinish);
+    return result;
   }
 
   /**
@@ -366,6 +389,93 @@ export class MfmWebGPUStepper {
    * reinterpret that storage as f32. This is intentionally a narrow 4 B/particle
    * readback and does not synchronize PopulationState or positions/velocities.
    */
+  /**
+   * Phase 14: opt-in profiling. CPU section timers need no device feature;
+   * per-pass GPU timing needs the 'timestamp-query' feature to have been
+   * requested when the device was created and degrades to CPU-only otherwise.
+   */
+  public enableProfiling(
+    options: { cpu?: boolean; gpuTimestamps?: boolean } = {},
+  ): { cpu: boolean; gpuTimestamps: boolean; gpuTimestampsSupported: boolean } {
+    const gpuTimestampsSupported = GpuPassTimestampProfiler.isSupported(this.device);
+    if (options.cpu ?? true) {
+      this.cpuProfiler ??= new CpuSectionProfiler();
+    } else {
+      this.cpuProfiler = null;
+    }
+    if (options.gpuTimestamps && gpuTimestampsSupported) {
+      this.gpuProfiler ??= new GpuPassTimestampProfiler(this.device);
+    } else if (this.gpuProfiler) {
+      this.gpuProfiler.destroy();
+      this.gpuProfiler = null;
+    }
+    return {
+      cpu: this.cpuProfiler !== null,
+      gpuTimestamps: this.gpuProfiler !== null,
+      gpuTimestampsSupported,
+    };
+  }
+
+  public async disableProfiling(): Promise<void> {
+    await this.gpuProfiler?.collect();
+    this.gpuProfiler?.destroy();
+    this.gpuProfiler = null;
+    this.cpuProfiler = null;
+  }
+
+  /** The shared CPU section profiler (the web worker records its own sections into it). */
+  public getCpuProfiler(): CpuSectionProfiler | null {
+    return this.cpuProfiler;
+  }
+
+  /** Closes the current CPU profiling window. The caller that drives the step owns this call. */
+  public commitProfilingStep(): void {
+    this.cpuProfiler?.commitStep();
+  }
+
+  /** Must be called right after the queue.submit() of an encoder that went through encodeStep(). */
+  public notifyStepSubmitted(): void {
+    this.gpuProfiler?.afterSubmit();
+  }
+
+  /** Awaits outstanding timestamp readbacks. Call outside timed regions. */
+  public async collectGpuTimings(): Promise<void> {
+    await this.gpuProfiler?.collect();
+  }
+
+  public async resetProfiling(): Promise<void> {
+    await this.gpuProfiler?.collect();
+    this.gpuProfiler?.reset();
+    this.cpuProfiler?.reset();
+  }
+
+  public getProfilingReport(): {
+    cpu: ReturnType<typeof aggregateCpuRecords>;
+    gpu: ReturnType<typeof aggregateGpuSteps>;
+    gpuTimestamps: {
+      enabled: boolean;
+      supported: boolean;
+      droppedSteps: number;
+      overflowPasses: number;
+      readbackErrors: number;
+      anomalousPasses: number;
+    };
+  } {
+    const gpu = this.gpuProfiler;
+    return {
+      cpu: aggregateCpuRecords(this.cpuProfiler?.getRecords() ?? []),
+      gpu: aggregateGpuSteps(gpu?.getSteps() ?? []),
+      gpuTimestamps: {
+        enabled: gpu !== null,
+        supported: GpuPassTimestampProfiler.isSupported(this.device),
+        droppedSteps: gpu?.droppedSteps ?? 0,
+        overflowPasses: gpu?.overflowPasses ?? 0,
+        readbackErrors: gpu?.readbackErrors ?? 0,
+        anomalousPasses: gpu?.anomalousPasses ?? 0,
+      },
+    };
+  }
+
   public async readChargeMetrics(): Promise<{
     totalCharge: number;
     inputCharge: number;
@@ -375,6 +485,8 @@ export class MfmWebGPUStepper {
       return { totalCharge: 0, inputCharge: 0, outputCharge: 0 };
     }
 
+    const prof = this.cpuProfiler;
+    const tSubmit = prof ? prof.now() : 0;
     const bytes = this.particleCount * 4;
     const encoder = this.device.createCommandEncoder({ label: 'mfm-charge-metrics-readback' });
     encoder.copyBufferToBuffer(
@@ -385,9 +497,14 @@ export class MfmWebGPUStepper {
       bytes,
     );
     this.device.queue.submit([encoder.finish()]);
+    prof?.since('metrics.chargeReadback.submitMs', tSubmit);
+    const tMap = prof ? prof.now() : 0;
     await this.reproductionStateReadback.mapAsync(MAP_MODE_READ);
+    prof?.since('metrics.chargeReadback.mapMs', tMap);
+    prof?.inc('metrics.readbackBytes', bytes);
 
     try {
+      const tLoop = prof ? prof.now() : 0;
       const charges = new Uint32Array(
         this.reproductionStateReadback.getMappedRange().slice(0, bytes),
       );
@@ -403,6 +520,7 @@ export class MfmWebGPUStepper {
         else if (role === 'output') outputCharge += charge;
       }
 
+      prof?.since('metrics.chargeReadback.cpuLoopMs', tLoop);
       return { totalCharge, inputCharge, outputCharge };
     } finally {
       this.reproductionStateReadback.unmap();
@@ -483,7 +601,10 @@ export class MfmWebGPUStepper {
 
     this.validateConfiguration();
 
+    const prof = this.cpuProfiler;
+    const tDirty = prof ? prof.now() : 0;
     if (this.populationDirty) {
+      prof?.inc('prepare.populationDirtyResyncs');
       // Phase 5F: charge is GPU-authoritative. A configuration change can
       // recreate buffers, so first capture the current GPU dynamic state into
       // PopulationState; otherwise uploadPopulationToGpu() would re-seed the
@@ -493,6 +614,7 @@ export class MfmWebGPUStepper {
       }
       await this.recreateGpuBuffers(false);
       this.populationDirty = false;
+      prof?.since('prepare.dirtyResyncMs', tDirty);
     }
 
     // Phase 4.2: the CPU slot mapping is persistent. It is rebuilt only when
@@ -531,6 +653,7 @@ export class MfmWebGPUStepper {
       };
     }
 
+    const tSnapshot = prof ? prof.now() : 0;
     const snapshot = this.takeSnapshot();
     const inputSignal = this.pendingInputSignal ?? 0;
     const inputSlot = this.findInputSlot(snapshot);
@@ -539,6 +662,7 @@ export class MfmWebGPUStepper {
     for (const [id, senders] of this.incomingSendersMap) {
       previousIncomingSenders.set(id, new Set(senders));
     }
+    prof?.since('encode.snapshotMs', tSnapshot);
 
     // Phase 5F: pressure is now computed on the GPU from Q_n and role.
     // globalPressure carries an explicit error override when set; -1 means
@@ -549,6 +673,7 @@ export class MfmWebGPUStepper {
     this.pendingInputSignal = null;
     const pressureInput = pressureOverride ?? -1;
 
+    const tParams = prof ? prof.now() : 0;
     this.writeParams(0, {
       inputSignal,
       inputSlot,
@@ -564,11 +689,16 @@ export class MfmWebGPUStepper {
       });
     }
 
+    prof?.since('encode.writeParamsMs', tParams);
+
     const stateRead = this.stateIndex;
     const stateWrite = 1 - stateRead;
     const incomingRead = this.incomingIndex;
     const incomingWrite = 1 - incomingRead;
     const eventWrite = 1 - this.eventIndex;
+
+    const tPasses = prof ? prof.now() : 0;
+    this.gpuProfiler?.beginStep();
 
     // Reset only buffers that will receive next-step writes.
     commandEncoder.clearBuffer(this.incomingChargeBuffers[incomingWrite]);
@@ -710,6 +840,8 @@ export class MfmWebGPUStepper {
       0,
       4,
     );
+    this.gpuProfiler?.endStep(commandEncoder);
+    prof?.since('encode.passesMs', tPasses);
 
     let finishPromise: Promise<PopulationState> | null = null;
 
@@ -733,6 +865,7 @@ export class MfmWebGPUStepper {
         let deathCandidateSlots: Uint32Array<ArrayBufferLike> = new Uint32Array(0);
 
         const readCompactCount = async (buffer: GPUBuffer, label: string): Promise<number> => {
+          const tRead = prof ? prof.now() : 0;
           const encoder = this.device.createCommandEncoder({ label });
           encoder.copyBufferToBuffer(buffer, 0, this.reproductionStateReadback, 0, 4);
           this.device.queue.submit([encoder.finish()]);
@@ -741,12 +874,16 @@ export class MfmWebGPUStepper {
             return new Uint32Array(this.reproductionStateReadback.getMappedRange(), 0, 1)[0] >>> 0;
           } finally {
             this.reproductionStateReadback.unmap();
+            prof?.since('sync.compactReadbackMs', tRead);
+            prof?.inc('readback.roundTrips');
+            prof?.inc('readback.bytes', 4);
           }
         };
 
         const readCompactSlots = async (buffer: GPUBuffer, count: number, label: string): Promise<Uint32Array> => {
           if (count <= 0) return new Uint32Array(0);
           const bytes = count * 4;
+          const tRead = prof ? prof.now() : 0;
           const encoder = this.device.createCommandEncoder({ label });
           encoder.copyBufferToBuffer(buffer, 0, this.reproductionStateReadback, 0, bytes);
           this.device.queue.submit([encoder.finish()]);
@@ -755,6 +892,9 @@ export class MfmWebGPUStepper {
             return new Uint32Array(this.reproductionStateReadback.getMappedRange().slice(0, bytes));
           } finally {
             this.reproductionStateReadback.unmap();
+            prof?.since('sync.compactReadbackMs', tRead);
+            prof?.inc('readback.roundTrips');
+            prof?.inc('readback.bytes', bytes);
           }
         };
 
@@ -784,12 +924,18 @@ export class MfmWebGPUStepper {
             );
 
             const geometryBytes = candidateCount * 16;
+            const tGeo = prof ? prof.now() : 0;
             const geometryEncoder = this.device.createCommandEncoder({ label: 'mfm-reproduction-geometry-readback' });
             geometryEncoder.copyBufferToBuffer(this.reproductionCandidateBuffer, 0, this.reproductionStateReadback, 0, geometryBytes);
             this.device.queue.submit([geometryEncoder.finish()]);
             await this.reproductionStateReadback.mapAsync(MAP_MODE_READ);
             try { reproductionGeometry = new Float32Array(this.reproductionStateReadback.getMappedRange().slice(0, geometryBytes)); }
-            finally { this.reproductionStateReadback.unmap(); }
+            finally {
+              this.reproductionStateReadback.unmap();
+              prof?.since('sync.compactReadbackMs', tGeo);
+              prof?.inc('readback.roundTrips');
+              prof?.inc('readback.bytes', geometryBytes);
+            }
           }
         }
 
@@ -798,9 +944,15 @@ export class MfmWebGPUStepper {
         // candidates exist. Otherwise the GPU incoming buffers remain the
         // authoritative next-step communication state.
         const needsEventReadback = deathCount > 0 || candidateCount > 0;
+        const tEvents = prof ? prof.now() : 0;
         const eventsReadback = needsEventReadback
           ? await this.readbackEvents(eventWrite)
           : { senders: new Uint32Array(0), targets: new Uint32Array(0) };
+        if (needsEventReadback && prof) {
+          prof.since('sync.eventReadbackMs', tEvents);
+          prof.inc('sync.eventReadbacks');
+          prof.inc('readback.bytes', (eventsReadback.senders.length + eventsReadback.targets.length) * 4);
+        }
 
         // The GPU writes now represent P_{n+1} for surviving current particles.
         this.stateIndex = stateWrite;
@@ -812,6 +964,7 @@ export class MfmWebGPUStepper {
         // received && active && hasTargets. The compacted candidate list is the
         // authoritative subset after additionally applying the pre-step health
         // threshold and post-step survival.
+        const tEventMap = prof ? prof.now() : 0;
         const nextIncomingCharges = new Map<string, number>();
         const nextIncomingSenders = new Map<string, Set<string>>();
         const events = new Map<string, StepEvent>();
@@ -870,6 +1023,10 @@ export class MfmWebGPUStepper {
           senders.add(senderId);
           nextIncomingSenders.set(targetId, senders);
         }
+        if (prof) {
+          prof.since('sync.eventMapBuildMs', tEventMap);
+          prof.inc('sync.eventMapEntries', this.particleCount);
+        }
 
         // -----------------------------------------------------------------------
         // Phase 8 — Population dynamics. Death/reproduction remains on CPU.
@@ -879,6 +1036,7 @@ export class MfmWebGPUStepper {
         // replacement PopulationState while preserving the pre-step snapshot for
         // reproduction semantics.
         // -----------------------------------------------------------------------
+        const tEvolution = prof ? prof.now() : 0;
         const evolutionResult = await this.withMappedEvolutionState((readback) => {
           const deadSlots = new Set<number>(deathCandidateSlots);
           const survivingIds = new Set<string>();
@@ -917,9 +1075,15 @@ export class MfmWebGPUStepper {
 
           return { deadCount, survivingIds, offspring };
         });
+        prof?.since('sync.evolutionCallbackMs', tEvolution);
 
         const populationStructureChanged =
           evolutionResult.deadCount > 0 || evolutionResult.offspring.length > 0;
+        if (prof) {
+          prof.inc('population.deaths', evolutionResult.deadCount);
+          prof.inc('population.births', evolutionResult.offspring.length);
+          if (populationStructureChanged) prof.inc('population.structureChanged');
+        }
 
         // 5G-C fix: normal sync intentionally does not copy position/velocity
         // into PopulationState. Before changing the CPU topology, capture the
@@ -930,6 +1094,7 @@ export class MfmWebGPUStepper {
           await this.syncFullCpuStateForSnapshot(snapshot);
         }
 
+        const tPopulationUpdate = prof ? prof.now() : 0;
         // Remove dead particles from the persistent PopulationState.
         if (evolutionResult.deadCount > 0) {
           for (const item of snapshot) {
@@ -944,6 +1109,7 @@ export class MfmWebGPUStepper {
         for (const child of evolutionResult.offspring) {
           this.population.addParticle(child.id, child.genome, child.state);
         }
+        prof?.since('sync.populationUpdateMs', tPopulationUpdate);
 
         if (needsEventReadback) {
           this.incomingChargeMap = nextIncomingCharges;
@@ -951,9 +1117,13 @@ export class MfmWebGPUStepper {
         }
 
         if (populationStructureChanged) {
+          const tSlots = prof ? prof.now() : 0;
           this.refreshCpuSlotMapping();
+          prof?.since('sync.slotMappingMs', tSlots);
         }
+        const tResync = prof ? prof.now() : 0;
         await this.resyncAfterPopulationStep(populationStructureChanged);
+        if (populationStructureChanged) prof?.since('sync.resyncMs', tResync);
 
         this.timestep++;
         return this.population;
@@ -1087,6 +1257,9 @@ export class MfmWebGPUStepper {
   }
 
   public destroy(): void {
+    this.gpuProfiler?.destroy();
+    this.gpuProfiler = null;
+    this.cpuProfiler = null;
     const buffers: GPUBuffer[] = [
       ...this.positionBuffers,
       ...this.velocityBuffers,
@@ -1168,6 +1341,7 @@ export class MfmWebGPUStepper {
       initialUpload
     ) {
       this.destroyDataBuffersOnly();
+      this.cpuProfiler?.inc('gpu.bufferRecreations');
       this.capacity = nextCapacity;
       this.maxK = nextMaxK;
       this.gridCountX = nextGrid.countX;
@@ -1316,6 +1490,8 @@ export class MfmWebGPUStepper {
   }
 
   private async uploadPopulationToGpu(): Promise<void> {
+    const uploadProf = this.cpuProfiler;
+    const tUpload = uploadProf ? uploadProf.now() : 0;
     this.refreshCpuSlotMapping();
     this.particleCount = this.population.particles.size;
 
@@ -1422,6 +1598,20 @@ export class MfmWebGPUStepper {
     // If a population was externally restored/reinitialized, preserve the CPU
     // history; GPU event buffers are observability buffers and do not determine
     // correctness of the next causal charge delivery.
+    if (uploadProf) {
+      const stateBytes = positions.byteLength + velocities.byteLength + healths.byteLength + charges.byteLength;
+      const perParticleBytes =
+        roles.byteLength + idHashes.byteLength + hmax.byteLength + mateHealthThreshold.byteLength +
+        theta.byteLength + a.byteLength + k.byteLength + rc.byteLength + mass.byteLength +
+        gamma.byteLength + rs.byteLength + omegaR.byteLength + omegaA.byteLength + omegaV.byteLength;
+      uploadProf.since('upload.populationMs', tUpload);
+      uploadProf.inc('upload.count');
+      uploadProf.inc(
+        'upload.bytes',
+        stateBytes * 2 + perParticleBytes + scheduledIncoming.byteLength * 2 + 8 +
+          Math.max(1, this.capacity * Math.max(1, this.maxK)) * 4,
+      );
+    }
     this.eventIndex = 0;
     this.stateIndex = 0;
   }
@@ -1453,6 +1643,7 @@ export class MfmWebGPUStepper {
       Math.abs(desiredGrid.cellSize - this.gridCellSize) > 1e-12;
 
     if (needsShape) {
+      this.cpuProfiler?.inc('resync.shapeChanges');
       await this.recreateGpuBuffers(false);
       return;
     }
@@ -1685,14 +1876,46 @@ export class MfmWebGPUStepper {
     dynamicOffset = 0,
     workgroupCount = Math.ceil(this.particleCount / WORKGROUP_SIZE),
   ): void {
-    const pass = encoder.beginComputePass();
+    const timestampWrites = this.gpuProfiler?.timestampWritesFor(this.passLabelFor(pipelineBundle));
+    const pass = encoder.beginComputePass(timestampWrites ? { timestampWrites } : undefined);
     pass.setPipeline(pipelineBundle.pipeline);
     pass.setBindGroup(0, bindGroup, [dynamicOffset]);
     pass.dispatchWorkgroups(workgroupCount);
     pass.end();
   }
 
+  /** Phase 14: maps a pipeline to the label used by the GPU pass profiler. Only called when profiling. */
+  private passLabelFor(bundle: PipelineBundle): string {
+    if (bundle === this.gridClearPipeline) return 'gridClear';
+    if (bundle === this.gridBuildPipeline) return 'gridBuild';
+    if (bundle === this.chargeProcessPipeline) return 'chargeProcess';
+    if (bundle === this.chargeFinalizePipeline) return 'chargeFinalize';
+    if (bundle === this.pressurePipeline) return 'pressure';
+    if (bundle === this.communicationSelectPipeline) return 'communicationSelect';
+    if (bundle === this.communicationTransmitPipeline) return 'communicationTransmit';
+    if (bundle === this.localSuccessPipeline) return 'localSuccess';
+    if (bundle === this.healthUpdatePipeline) return 'healthUpdate';
+    if (bundle === this.forcePipeline) return 'force';
+    if (bundle === this.forceAllPairsPipeline) return 'forceAllPairs';
+    if (bundle === this.mechanicsPipeline) return 'mechanics';
+    if (bundle === this.deathCompactionPipeline) return 'deathCompaction';
+    if (bundle === this.reproductionCompactionPipeline) return 'reproductionCompaction';
+    return 'unknown';
+  }
+
   private makeBindGroup(layout: GPUBindGroupLayout, resources: GPUBuffer[]): GPUBindGroup {
+    const prof = this.cpuProfiler;
+    if (prof) {
+      const t = prof.now();
+      const group = this.makeBindGroupUninstrumented(layout, resources);
+      prof.since('encode.bindGroupCreateMs', t);
+      prof.inc('encode.bindGroupsCreated');
+      return group;
+    }
+    return this.makeBindGroupUninstrumented(layout, resources);
+  }
+
+  private makeBindGroupUninstrumented(layout: GPUBindGroupLayout, resources: GPUBuffer[]): GPUBindGroup {
     return this.device.createBindGroup({
       layout,
       entries: resources.map((buffer, binding) => ({
@@ -1930,6 +2153,8 @@ export class MfmWebGPUStepper {
    */
   private async syncFullCpuStateForSnapshot(snapshot: Snapshot[]): Promise<void> {
     if (this.particleCount === 0 || snapshot.length === 0) return;
+    const prof = this.cpuProfiler;
+    const tFull = prof ? prof.now() : 0;
 
     const commandEncoder = this.device.createCommandEncoder({ label: 'mfm-full-cpu-sync-internal' });
     const readbackLayout = this.getFullReadbackLayout();
@@ -1967,6 +2192,12 @@ export class MfmWebGPUStepper {
       this.applyDynamicStateToPopulation(readback, 'full', { snapshot });
     } finally {
       this.fullStateReadback.unmap();
+      if (prof) {
+        prof.since('sync.fullSyncMs', tFull);
+        prof.inc('sync.fullSyncs');
+        prof.inc('readback.roundTrips');
+        prof.inc('readback.bytes', this.particleCount * 24);
+      }
     }
   }
 
@@ -2105,6 +2336,8 @@ export class MfmWebGPUStepper {
     }
 
     eventCount = Math.min(eventCount, maxEvents);
+    this.cpuProfiler?.inc('readback.roundTrips');
+    this.cpuProfiler?.inc('readback.bytes', 4);
 
     if (eventCount === 0) {
       return {
@@ -2131,7 +2364,14 @@ export class MfmWebGPUStepper {
 
     this.device.queue.submit([eventEncoder.finish()]);
 
+    const eventProf = this.cpuProfiler;
+    const tEventWait = eventProf ? eventProf.now() : 0;
     await this.device.queue.onSubmittedWorkDone();
+    if (eventProf) {
+      eventProf.since('sync.eventOnSubmittedWorkDoneMs', tEventWait);
+      eventProf.inc('gpuWait.onSubmittedWorkDoneCalls');
+      eventProf.inc('readback.roundTrips');
+    }
 
     await this.eventDataReadback.mapAsync(MAP_MODE_READ);
 

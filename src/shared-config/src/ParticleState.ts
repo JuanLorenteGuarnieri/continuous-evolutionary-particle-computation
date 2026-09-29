@@ -1,4 +1,4 @@
-import { Vector2, ParticleID } from './types.js';
+import type { Vector2, ParticleID } from './types.js';
 
 export type ParticleRole = 'internal' | 'input' | 'output';
 

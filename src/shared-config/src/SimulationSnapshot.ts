@@ -1,6 +1,6 @@
 import { Genome } from './Genome.js';
 import { ParticleState } from './ParticleState.js';
-import { ParticleID } from './types.js';
+import type { ParticleID } from './types.js';
 
 export interface SimulationSnapshotData {
   readonly version: string;

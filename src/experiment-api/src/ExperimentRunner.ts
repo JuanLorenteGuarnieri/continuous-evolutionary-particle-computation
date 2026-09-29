@@ -3,7 +3,7 @@
 import { ExperimentManifest } from '@cepc/shared-config';
  import { MfmCpuReference } from '@cepc/cpu-reference';
  import { MetricsCollector } from './MetricsCollector.js';
- import { PopulationState, Genome, ParticleState, ParticleID } from '@cepc/shared-config';
+ import { PopulationState, Genome, ParticleState, type ParticleID } from '@cepc/shared-config';
  
 export interface ExperimentResult {
   manifestId: string;

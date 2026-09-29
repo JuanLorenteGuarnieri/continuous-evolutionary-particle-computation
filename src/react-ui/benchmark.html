@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CEPC Phase 14 Benchmark Harness</title>
+    <!--
+      Dedicated, minimal page for the Phase 14 benchmark harness. Deliberately
+      does not load the React UI: it only needs a worker, two OffscreenCanvas
+      targets and the 'runBenchmark' worker message added in Phase 14. Driven
+      by tools/bench/benchmark-webgpu.mjs (Playwright) or manually from the
+      browser devtools console via window.__cepcRunBenchmark(options).
+    -->
+    <style>
+      html, body { margin: 0; padding: 0; background: #050508; color: #ddd; font: 13px monospace; }
+      #status { padding: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div id="status">initializing…</div>
+    <script type="module" src="/src/benchmark-main.ts"></script>
+  </body>
+</html>

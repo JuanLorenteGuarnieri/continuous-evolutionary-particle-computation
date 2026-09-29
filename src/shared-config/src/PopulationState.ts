@@ -1,4 +1,4 @@
-import { ParticleID } from './types.js';
+import type { ParticleID } from './types.js';
 import { Genome } from './Genome.js';
 import { ParticleState } from './ParticleState.js';
 

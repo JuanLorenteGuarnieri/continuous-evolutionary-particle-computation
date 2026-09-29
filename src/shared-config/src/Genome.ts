@@ -1,4 +1,4 @@
-import { RandomLike } from './types.js';
+import type { RandomLike } from './types.js';
 
 export interface GenomeData {
   readonly version: string;
