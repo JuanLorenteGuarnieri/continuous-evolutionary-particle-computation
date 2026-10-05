@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 1,
+  "kind": "webgpu-benchmark-matrix",
+  "generatedAt": "2026-10-02T08:41:15.135Z",
+  "baseUrl": "http://localhost:4173/continuous-evolutionary-particle-computation/",
+  "browser": "153.0.8010.12",
+  "method": {
+    "sizes": [
+      100,
+      200,
+      500,
+      1000,
+      2000
+    ],
+    "steps": 60,
+    "warmupSteps": 20,
+    "backends": [
+      "WebGPU"
+    ],
+    "stepsPerFrameSweep": [
+      1
+    ],
+    "abVariants": [
+      "baseline"
+    ],
+    "orchestration": {
+      "bindGroupCache": true,
+      "packParamWrites": true
+    },
+    "realGpuFlags": true
+  },
+  "runs": [
+    {
+      "backend": "WebGPU",
+      "particleCount": 100,
+      "variant": "baseline",
+      "result": {
+        "schemaVersion": 1,
+        "kind": "webgpu-worker",
+        "generatedAt": "2026-10-02T08:41:16.034Z",
+        "environment": {
+          "backend": "WebGPU",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "adapterInfo": null
+        },
+        "method": {
+          "particleCount": 100,
+          "capacity": 100,
+          "density": 2,
+          "domain": {
+            "Lx": 7.0710678118654755,
+            "Ly": 7.0710678118654755
+          },
+          "seed": 42,
+          "steps": 60,
+          "stepsPerFrame": 1,
+          "warmupSteps": 20,
+          "renderEnabled": true,
+          "metricsEnabled": true,
+          "gpuTimestampsRequested": true,
+          "gpuTimestampsSupported": false,
+          "gpuTimestampsEnabled": false,
+          "orchestration": null
+        },
+        "wallMs": 108.60000002384186,
+        "stepsPerSecond": 552.486187724012,
+        "particleStepsPerSecond": 55248.6187724012,
+        "frameWallMs": {
+          "count": 60,
+          "sum": 107.59999990463257,
+          "mean": 1.7933333317438762,
+          "median": 1.6500000059604645,
+          "p95": 2.5050000011920925,
+          "p99": 2.7409999978542325,
+          "min": 1.399999976158142,
+          "max": 2.800000011920929,
+          "stddev": 0.33855904044931384
+        },
+        "cpu": {
+          "steps": 60,
+          "sections": [
+            {
+              "section": "worker.frameStepsMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 107.59999990463257,
+                "mean": 1.7933333317438762,
+                "median": 1.6500000059604645,
+                "p95": 2.5050000011920925,
+                "p99": 2.7409999978542325,
+                "min": 1.399999976158142,
+                "max": 2.800000011920929,
+                "stddev": 0.33855904044931384
+              },
+              "totalMs": 107.59999990463257
+            },
+            {
+              "section": "worker.headlessStepMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 106.69999998807907,
+                "mean": 1.7783333331346511,
+                "median": 1.600000023841858,
+                "p95": 2.5050000011920925,
+                "p99": 2.7409999978542325,
+                "min": 1.300000011920929,
+                "max": 2.800000011920929,
+                "stddev": 0.3478944626411921
+              },
+              "totalMs": 106.69999998807907
+            }
+          ],
+          "counters": []
+        },
+        "gpu": null,
+        "gpuTimestamps": null,
+        "stepperCpu": null
+      }
+    },
+    {
+      "backend": "WebGPU",
+      "particleCount": 200,
+      "variant": "baseline",
+      "result": {
+        "schemaVersion": 1,
+        "kind": "webgpu-worker",
+        "generatedAt": "2026-10-02T08:41:16.419Z",
+        "environment": {
+          "backend": "WebGPU",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "adapterInfo": null
+        },
+        "method": {
+          "particleCount": 200,
+          "capacity": 200,
+          "density": 2,
+          "domain": {
+            "Lx": 10,
+            "Ly": 10
+          },
+          "seed": 42,
+          "steps": 60,
+          "stepsPerFrame": 1,
+          "warmupSteps": 20,
+          "renderEnabled": true,
+          "metricsEnabled": true,
+          "gpuTimestampsRequested": true,
+          "gpuTimestampsSupported": false,
+          "gpuTimestampsEnabled": false,
+          "orchestration": null
+        },
+        "wallMs": 274.4000000357628,
+        "stepsPerSecond": 218.65889209978187,
+        "particleStepsPerSecond": 43731.778419956376,
+        "frameWallMs": {
+          "count": 60,
+          "sum": 274.30000001192093,
+          "mean": 4.571666666865349,
+          "median": 4.600000023841858,
+          "p95": 6.099999967217445,
+          "p99": 6.669000026583669,
+          "min": 3,
+          "max": 7.200000047683716,
+          "stddev": 0.8610249075165056
+        },
+        "cpu": {
+          "steps": 60,
+          "sections": [
+            {
+              "section": "worker.frameStepsMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 274.30000001192093,
+                "mean": 4.571666666865349,
+                "median": 4.600000023841858,
+                "p95": 6.099999967217445,
+                "p99": 6.669000026583669,
+                "min": 3,
+                "max": 7.200000047683716,
+                "stddev": 0.8610249075165056
+              },
+              "totalMs": 274.30000001192093
+            },
+            {
+              "section": "worker.headlessStepMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 273.0999999642372,
+                "mean": 4.55166666607062,
+                "median": 4.5999999940395355,
+                "p95": 6.099999967217445,
+                "p99": 6.669000026583669,
+                "min": 3,
+                "max": 7.200000047683716,
+                "stddev": 0.8636148199782573
+              },
+              "totalMs": 273.0999999642372
+            }
+          ],
+          "counters": []
+        },
+        "gpu": null,
+        "gpuTimestamps": null,
+        "stepperCpu": null
+      }
+    },
+    {
+      "backend": "WebGPU",
+      "particleCount": 500,
+      "variant": "baseline",
+      "result": {
+        "schemaVersion": 1,
+        "kind": "webgpu-worker",
+        "generatedAt": "2026-10-02T08:41:18.749Z",
+        "environment": {
+          "backend": "WebGPU",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "adapterInfo": null
+        },
+        "method": {
+          "particleCount": 500,
+          "capacity": 500,
+          "density": 2,
+          "domain": {
+            "Lx": 15.811388300841896,
+            "Ly": 15.811388300841896
+          },
+          "seed": 42,
+          "steps": 60,
+          "stepsPerFrame": 1,
+          "warmupSteps": 20,
+          "renderEnabled": true,
+          "metricsEnabled": true,
+          "gpuTimestampsRequested": true,
+          "gpuTimestampsSupported": false,
+          "gpuTimestampsEnabled": false,
+          "orchestration": null
+        },
+        "wallMs": 1794,
+        "stepsPerSecond": 33.44481605351171,
+        "particleStepsPerSecond": 16722.408026755853,
+        "frameWallMs": {
+          "count": 60,
+          "sum": 1793.3000000715256,
+          "mean": 29.888333334525427,
+          "median": 25.650000005960464,
+          "p95": 55.19499998688689,
+          "p99": 85.19900001406668,
+          "min": 19.80000001192093,
+          "max": 87.5,
+          "stddev": 13.86772141199334
+        },
+        "cpu": {
+          "steps": 60,
+          "sections": [
+            {
+              "section": "worker.frameStepsMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 1793.3000000715256,
+                "mean": 29.888333334525427,
+                "median": 25.650000005960464,
+                "p95": 55.19499998688689,
+                "p99": 85.19900001406668,
+                "min": 19.80000001192093,
+                "max": 87.5,
+                "stddev": 13.86772141199334
+              },
+              "totalMs": 1793.3000000715256
+            },
+            {
+              "section": "worker.headlessStepMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 1792.1000002622604,
+                "mean": 29.86833333770434,
+                "median": 25.650000005960464,
+                "p95": 55.19499998688689,
+                "p99": 85.19900001406668,
+                "min": 19.80000001192093,
+                "max": 87.5,
+                "stddev": 13.871499454324198
+              },
+              "totalMs": 1792.1000002622604
+            }
+          ],
+          "counters": []
+        },
+        "gpu": null,
+        "gpuTimestamps": null,
+        "stepperCpu": null
+      }
+    },
+    {
+      "backend": "WebGPU",
+      "particleCount": 1000,
+      "variant": "baseline",
+      "result": {
+        "schemaVersion": 1,
+        "kind": "webgpu-worker",
+        "generatedAt": "2026-10-02T08:41:24.796Z",
+        "environment": {
+          "backend": "WebGPU",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "adapterInfo": null
+        },
+        "method": {
+          "particleCount": 1000,
+          "capacity": 1000,
+          "density": 2,
+          "domain": {
+            "Lx": 22.360679774997898,
+            "Ly": 22.360679774997898
+          },
+          "seed": 42,
+          "steps": 60,
+          "stepsPerFrame": 1,
+          "warmupSteps": 20,
+          "renderEnabled": true,
+          "metricsEnabled": true,
+          "gpuTimestampsRequested": true,
+          "gpuTimestampsSupported": false,
+          "gpuTimestampsEnabled": false,
+          "orchestration": null
+        },
+        "wallMs": 4154.699999988079,
+        "stepsPerSecond": 14.441475918880343,
+        "particleStepsPerSecond": 14441.475918880342,
+        "frameWallMs": {
+          "count": 60,
+          "sum": 4154.399999976158,
+          "mean": 69.23999999960263,
+          "median": 68.60000002384186,
+          "p95": 73.47999997735023,
+          "p99": 75.50999996423721,
+          "min": 66.80000001192093,
+          "max": 76.09999996423721,
+          "stddev": 2.0248621310231294
+        },
+        "cpu": {
+          "steps": 60,
+          "sections": [
+            {
+              "section": "worker.frameStepsMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 4154.399999976158,
+                "mean": 69.23999999960263,
+                "median": 68.60000002384186,
+                "p95": 73.47999997735023,
+                "p99": 75.50999996423721,
+                "min": 66.80000001192093,
+                "max": 76.09999996423721,
+                "stddev": 2.0248621310231294
+              },
+              "totalMs": 4154.399999976158
+            },
+            {
+              "section": "worker.headlessStepMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 4153.700000047684,
+                "mean": 69.22833333412807,
+                "median": 68.60000002384186,
+                "p95": 73.38500001132488,
+                "p99": 75.50999996423721,
+                "min": 66.80000001192093,
+                "max": 76.09999996423721,
+                "stddev": 2.022629610336346
+              },
+              "totalMs": 4153.700000047684
+            }
+          ],
+          "counters": []
+        },
+        "gpu": null,
+        "gpuTimestamps": null,
+        "stepperCpu": null
+      }
+    },
+    {
+      "backend": "WebGPU",
+      "particleCount": 2000,
+      "variant": "baseline",
+      "result": {
+        "schemaVersion": 1,
+        "kind": "webgpu-worker",
+        "generatedAt": "2026-10-02T08:41:48.829Z",
+        "environment": {
+          "backend": "WebGPU",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "adapterInfo": null
+        },
+        "method": {
+          "particleCount": 2000,
+          "capacity": 2000,
+          "density": 2,
+          "domain": {
+            "Lx": 31.622776601683793,
+            "Ly": 31.622776601683793
+          },
+          "seed": 42,
+          "steps": 60,
+          "stepsPerFrame": 1,
+          "warmupSteps": 20,
+          "renderEnabled": true,
+          "metricsEnabled": true,
+          "gpuTimestampsRequested": true,
+          "gpuTimestampsSupported": false,
+          "gpuTimestampsEnabled": false,
+          "orchestration": null
+        },
+        "wallMs": 18413.099999964237,
+        "stepsPerSecond": 3.2585496195706605,
+        "particleStepsPerSecond": 6517.099239141321,
+        "frameWallMs": {
+          "count": 60,
+          "sum": 18412.30000001192,
+          "mean": 306.87166666686534,
+          "median": 286.34999999403954,
+          "p95": 419.39500001072884,
+          "p99": 490.09599998593285,
+          "min": 265.30000001192093,
+          "max": 576,
+          "stddev": 55.36764425622856
+        },
+        "cpu": {
+          "steps": 60,
+          "sections": [
+            {
+              "section": "worker.frameStepsMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 18412.30000001192,
+                "mean": 306.87166666686534,
+                "median": 286.34999999403954,
+                "p95": 419.39500001072884,
+                "p99": 490.09599998593285,
+                "min": 265.30000001192093,
+                "max": 576,
+                "stddev": 55.36764425622856
+              },
+              "totalMs": 18412.30000001192
+            },
+            {
+              "section": "worker.headlessStepMs",
+              "stepsPresent": 60,
+              "perStepMs": {
+                "count": 60,
+                "sum": 18411.899999976158,
+                "mean": 306.8649999996026,
+                "median": 286.34999999403954,
+                "p95": 419.39500001072884,
+                "p99": 490.09599998593285,
+                "min": 265.30000001192093,
+                "max": 576,
+                "stddev": 55.36944953286769
+              },
+              "totalMs": 18411.899999976158
+            }
+          ],
+          "counters": []
+        },
+        "gpu": null,
+        "gpuTimestamps": null,
+        "stepperCpu": null
+      }
+    }
+  ],
+  "errors": []
+}

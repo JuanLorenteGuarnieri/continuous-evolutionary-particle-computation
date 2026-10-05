@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "kind": "webgpu-benchmark-matrix",
+  "generatedAt": "2026-10-02T21:19:23.451Z",
+  "baseUrl": "http://localhost:4180/continuous-evolutionary-particle-computation/",
+  "browser": "153.0.8010.12",
+  "method": {
+    "sizes": [
+      1000,
+      5000,
+      10000
+    ],
+    "steps": 30,
+    "warmupSteps": 10,
+    "backends": [
+      "WebGPU",
+      "CPU"
+    ],
+    "stepsPerFrameSweep": [
+      1,
+      4
+    ],
+    "abVariants": [
+      "baseline",
+      "renderDisabled",
+      "metricsDisabled",
+      "gpuTimestampsDisabled"
+    ],
+    "orchestration": null,
+    "kernels": null,
+    "realGpuFlags": true
+  },
+  "runs": [],
+  "errors": [],
+  "selfTest": {
+    "schemaVersion": 1,
+    "kind": "kernel-selftest",
+    "adapter": {
+      "vendor": "intel",
+      "architecture": "gen-9",
+      "device": "0x1916",
+      "description": "Intel(R) HD Graphics 520"
+    },
+    "passed": true,
+    "cases": [
+      {
+        "particles": 0,
+        "deathFraction": 0,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 0,
+        "deathFraction": 0.02,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 0,
+        "deathFraction": 0.5,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 0,
+        "deathFraction": 1,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1,
+        "deathFraction": 0,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1,
+        "deathFraction": 0.02,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1,
+        "deathFraction": 0.5,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1,
+        "deathFraction": 1,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2,
+        "deathFraction": 0,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2,
+        "deathFraction": 0.02,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2,
+        "deathFraction": 0.5,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2,
+        "deathFraction": 1,
+        "deaths": 0,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 127,
+        "deathFraction": 0,
+        "deaths": 2,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 127,
+        "deathFraction": 0.02,
+        "deaths": 6,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 127,
+        "deathFraction": 0.5,
+        "deaths": 54,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 127,
+        "deathFraction": 1,
+        "deaths": 86,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 128,
+        "deathFraction": 0,
+        "deaths": 3,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 128,
+        "deathFraction": 0.02,
+        "deaths": 2,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 128,
+        "deathFraction": 0.5,
+        "deaths": 48,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 128,
+        "deathFraction": 1,
+        "deaths": 70,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 129,
+        "deathFraction": 0,
+        "deaths": 2,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 129,
+        "deathFraction": 0.02,
+        "deaths": 2,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 129,
+        "deathFraction": 0.5,
+        "deaths": 46,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 129,
+        "deathFraction": 1,
+        "deaths": 85,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 255,
+        "deathFraction": 0,
+        "deaths": 6,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 255,
+        "deathFraction": 0.02,
+        "deaths": 11,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 255,
+        "deathFraction": 0.5,
+        "deaths": 92,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 255,
+        "deathFraction": 1,
+        "deaths": 173,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 256,
+        "deathFraction": 0,
+        "deaths": 3,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 256,
+        "deathFraction": 0.02,
+        "deaths": 7,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 256,
+        "deathFraction": 0.5,
+        "deaths": 103,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 256,
+        "deathFraction": 1,
+        "deaths": 165,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 257,
+        "deathFraction": 0,
+        "deaths": 4,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 257,
+        "deathFraction": 0.02,
+        "deaths": 10,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 257,
+        "deathFraction": 0.5,
+        "deaths": 94,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 257,
+        "deathFraction": 1,
+        "deaths": 178,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1000,
+        "deathFraction": 0,
+        "deaths": 15,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1000,
+        "deathFraction": 0.02,
+        "deaths": 29,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1000,
+        "deathFraction": 0.5,
+        "deaths": 378,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 1000,
+        "deathFraction": 1,
+        "deaths": 696,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2000,
+        "deathFraction": 0,
+        "deaths": 22,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2000,
+        "deathFraction": 0.02,
+        "deaths": 62,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2000,
+        "deathFraction": 0.5,
+        "deaths": 719,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2000,
+        "deathFraction": 1,
+        "deaths": 1346,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2049,
+        "deathFraction": 0,
+        "deaths": 31,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2049,
+        "deathFraction": 0.02,
+        "deaths": 83,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2049,
+        "deathFraction": 0.5,
+        "deaths": 706,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 2049,
+        "deathFraction": 1,
+        "deaths": 1428,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 4096,
+        "deathFraction": 0,
+        "deaths": 51,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 4096,
+        "deathFraction": 0.02,
+        "deaths": 112,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 4096,
+        "deathFraction": 0.5,
+        "deaths": 1439,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 4096,
+        "deathFraction": 1,
+        "deaths": 2813,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 10000,
+        "deathFraction": 0,
+        "deaths": 120,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 10000,
+        "deathFraction": 0.02,
+        "deaths": 282,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 10000,
+        "deathFraction": 0.5,
+        "deaths": 3500,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      },
+      {
+        "particles": 10000,
+        "deathFraction": 1,
+        "deaths": 6906,
+        "serialMatchesReference": true,
+        "parallelMatchesReference": true,
+        "variantsIdentical": true
+      }
+    ],
+    "failures": []
+  }
+}

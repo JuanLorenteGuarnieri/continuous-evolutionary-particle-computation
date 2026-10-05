@@ -1,0 +1,68 @@
+{
+  "schema": "cepc-cpu-orchestration/1",
+  "timed": true,
+  "scope": "CPU-only JS orchestration under a no-op software GPU; not GPU time",
+  "label": "phase14-baseline",
+  "stepper": "/home/claude/baseline/continuous-evolutionary-particle-computation/src/webgpu-mfm/src/MfmWebGPUStepper.ts",
+  "node": "v22.22.2",
+  "results": [
+    {
+      "particles": 1000,
+      "stepsPerRepeat": 300,
+      "repeats": 7,
+      "stepMeanMsMedianOfRepeats": 0.4690579133333449,
+      "stepP50MsMedianOfRepeats": 0.38214799999991556,
+      "stepP95MsMedianOfRepeats": 0.6041200000001936,
+      "repeatMeansMs": [
+        0.3486,
+        0.3806,
+        0.3596,
+        0.4919,
+        0.4784,
+        0.4691
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0048,
+        "encode.passesMs": 0.0196,
+        "encode.snapshotMs": 0.0546,
+        "encode.writeParamsMs": 0.0071,
+        "stepUnsafe.encodeMs": 0.1359,
+        "stepUnsafe.finishNormalSyncMs": 0.3141,
+        "stepUnsafe.submitMs": 0.0102,
+        "sync.compactReadbackMs": 0.0281,
+        "sync.eventMapBuildMs": 0.1371,
+        "sync.evolutionCallbackMs": 0.1425,
+        "sync.populationUpdateMs": 0.0001
+      }
+    },
+    {
+      "particles": 10000,
+      "stepsPerRepeat": 300,
+      "repeats": 7,
+      "stepMeanMsMedianOfRepeats": 5.058937260000015,
+      "stepP50MsMedianOfRepeats": 4.318788000000495,
+      "stepP95MsMedianOfRepeats": 8.28833300000042,
+      "repeatMeansMs": [
+        5.4345,
+        5.0589,
+        5.4473,
+        4.1178,
+        4.4322,
+        4.6676
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0084,
+        "encode.passesMs": 0.0216,
+        "encode.snapshotMs": 0.5359,
+        "encode.writeParamsMs": 0.0131,
+        "stepUnsafe.encodeMs": 1.0991,
+        "stepUnsafe.finishNormalSyncMs": 3.9346,
+        "stepUnsafe.submitMs": 0.0179,
+        "sync.compactReadbackMs": 0.0669,
+        "sync.eventMapBuildMs": 1.9205,
+        "sync.evolutionCallbackMs": 1.747,
+        "sync.populationUpdateMs": 0.0002
+      }
+    }
+  ]
+}

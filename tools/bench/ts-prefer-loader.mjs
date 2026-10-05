@@ -3,13 +3,15 @@
  * other Node-side tooling) to execute the repository's TypeScript sources
  * directly with `--experimental-strip-types`, exactly as Vite would see them.
  *
- * It does two things Node's default resolver does not:
+ * It does three things Node's default resolver does not:
  *
  * 1. Prefers `<name>.ts` over `<name>.js` for relative specifiers ending in
  *    `.js`. The sources use the TypeScript NodeNext convention (`./foo.js`
  *    means `./foo.ts`). The repository also contains stale, checked-in compiled
  *    `.js` siblings that would otherwise shadow the real sources.
- * 2. Maps bare `@cepc/<package>` specifiers to `src/<package>/src/index.ts`
+ * 2. Resolves extensionless relative specifiers ('./profiling') to a sibling `.ts` file, as Vite/tsc
+ *    "Bundler" resolution does (Phase 15: needed to run MfmWebGPUStepper.ts under Node).
+ * 3. Maps bare `@cepc/<package>` specifiers to `src/<package>/src/index.ts`
  *    (mirroring the `paths` entry in tsconfig.json), so the tooling does not
  *    depend on how node_modules/@cepc is linked.
  *
@@ -41,6 +43,18 @@ export async function resolve(specifier, context, nextResolve) {
     const tsUrl = new URL(tsSpecifier, context.parentURL);
     if (tsUrl.protocol === 'file:' && existsSync(fileURLToPath(tsUrl))) {
       return nextResolve(tsSpecifier, context);
+    }
+  }
+
+  // Extensionless relative specifiers ('./profiling') resolve to a sibling .ts file (Bundler-style resolution).
+  if (
+    (specifier.startsWith('./') || specifier.startsWith('../')) &&
+    !/\.[cm]?[jt]sx?$|\.json$/.test(specifier) &&
+    context.parentURL
+  ) {
+    const tsUrl = new URL(`${specifier}.ts`, context.parentURL);
+    if (tsUrl.protocol === 'file:' && existsSync(fileURLToPath(tsUrl))) {
+      return nextResolve(`${specifier}.ts`, context);
     }
   }
 

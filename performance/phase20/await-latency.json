@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "kind": "webgpu-benchmark-matrix",
+  "generatedAt": "2026-10-05T20:54:20.274Z",
+  "baseUrl": "http://localhost:4180/continuous-evolutionary-particle-computation/",
+  "browser": "153.0.8010.12",
+  "method": {
+    "sizes": [
+      1000,
+      5000,
+      10000
+    ],
+    "steps": 30,
+    "warmupSteps": 10,
+    "backends": [
+      "WebGPU",
+      "CPU"
+    ],
+    "stepsPerFrameSweep": [
+      1,
+      4
+    ],
+    "abVariants": [
+      "baseline",
+      "renderDisabled",
+      "metricsDisabled",
+      "gpuTimestampsDisabled"
+    ],
+    "orchestration": null,
+    "kernels": null,
+    "topologyMerge": null,
+    "metricsMode": null,
+    "realGpuFlags": true
+  },
+  "runs": [],
+  "errors": [],
+  "awaitLatency": {
+    "schemaVersion": 1,
+    "iterations": 200,
+    "warmup": 20,
+    "adapter": {
+      "vendor": "intel",
+      "architecture": "gen-9",
+      "description": "Intel(R) HD Graphics 520"
+    },
+    "onSubmittedWorkDone": {
+      "n": 200,
+      "minMs": 1.0999999046325684,
+      "medianMs": 3,
+      "meanMs": 3.303000000715256,
+      "p95Ms": 4.899999976158142,
+      "maxMs": 13.100000023841858
+    },
+    "copyMap": {
+      "n": 200,
+      "minMs": 0.8999999761581421,
+      "medianMs": 3.100000023841858,
+      "meanMs": 4.417499999403954,
+      "p95Ms": 8.600000023841858,
+      "maxMs": 93.19999992847443
+    },
+    "computeCopyMap": [
+      {
+        "work": 0,
+        "stats": {
+          "n": 200,
+          "minMs": 1,
+          "medianMs": 3.1999999284744263,
+          "meanMs": 5.1330000001192095,
+          "p95Ms": 7.799999952316284,
+          "maxMs": 134
+        }
+      },
+      {
+        "work": 20000,
+        "stats": {
+          "n": 200,
+          "minMs": 5.799999952316284,
+          "medianMs": 6.700000047683716,
+          "meanMs": 8.531500000953674,
+          "p95Ms": 10.299999952316284,
+          "maxMs": 110.30000007152557
+        }
+      },
+      {
+        "work": 200000,
+        "stats": {
+          "n": 200,
+          "minMs": 24.200000047683716,
+          "medianMs": 24.800000071525574,
+          "meanMs": 24.956999998688698,
+          "p95Ms": 25.800000071525574,
+          "maxMs": 27.100000023841858
+        }
+      }
+    ],
+    "pipelinedPerStep": [
+      {
+        "work": 0,
+        "depth": 1,
+        "perStepMs": 3.266500000357628
+      },
+      {
+        "work": 0,
+        "depth": 2,
+        "perStepMs": 2.8319999998807908
+      },
+      {
+        "work": 0,
+        "depth": 3,
+        "perStepMs": 0.8575
+      },
+      {
+        "work": 0,
+        "depth": 4,
+        "perStepMs": 0.8940000003576278
+      },
+      {
+        "work": 20000,
+        "depth": 1,
+        "perStepMs": 8.00449999988079
+      },
+      {
+        "work": 20000,
+        "depth": 2,
+        "perStepMs": 3.8084999996423723
+      },
+      {
+        "work": 20000,
+        "depth": 3,
+        "perStepMs": 2.391999999880791
+      },
+      {
+        "work": 20000,
+        "depth": 4,
+        "perStepMs": 2.4219999998807906
+      },
+      {
+        "work": 200000,
+        "depth": 1,
+        "perStepMs": 25.183000000119208
+      },
+      {
+        "work": 200000,
+        "depth": 2,
+        "perStepMs": 22.95
+      },
+      {
+        "work": 200000,
+        "depth": 3,
+        "perStepMs": 23.91450000047684
+      },
+      {
+        "work": 200000,
+        "depth": 4,
+        "perStepMs": 35.30699999988079
+      }
+    ]
+  }
+}

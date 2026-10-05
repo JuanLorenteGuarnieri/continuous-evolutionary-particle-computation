@@ -39,6 +39,18 @@
  *   --steps-per-frame 1,4     stepsPerFrame values to sweep for WebGPU (default 1,4)
  *   --skip-ab                 only run the baseline configuration (faster smoke run)
  *   --headed                  run non-headless (useful for local debugging)
+ *   --force-kernel <mode>      Phase 18: grid-force kernel linked-list (default) | sorted | sorted-culled (see ForceKernelMode)
+ *   --await-latency            Phase 20: measure raw mapAsync/onSubmittedWorkDone latency and whether pipelined submissions overlap it (writes report.awaitLatency)
+ *   --metrics-mode <mode>      Phase 20: blocking (Phase 15-19) | lagged (default; non-blocking one-frame-lagged metrics)
+ *   --pipeline-depth 1|2       Phase 20: normal-sync steps kept in flight by step() (1 = Phase 19 behaviour, default)
+ *   --quiet-fast-path on|off   Phase 20: skip O(N) CPU work on quiet steps (default on)
+ *   --topology-merge <mode>    Phase 19/20: worker merge of the normal-sync population: rebuild (pre-Phase-19) | incremental | epoch (default: incremental + skip while the stepper topology epoch is unchanged)
+ *   --bind-group-cache on|off  Phase 16: reuse bind groups across timesteps (default: stepper default = on)
+ *   --pack-params on|off       Phase 16: one packed params writeBuffer instead of one per rank block (default off)
+ *   --no-sandbox               pass --no-sandbox to Chromium (needed when running as root, e.g. in containers)
+ *   --real-gpu                 launch Chromium WITHOUT the software-rendering flags (--use-angle=swiftshader, --use-gl=angle,
+ *                              Vulkan feature) and with --enable-webgpu-developer-features (unquantized timestamp queries).
+ *                              Use this for any run meant to measure real hardware; then check environment.adapterInfo in the JSON.
  *   --out <file>              JSON output path (default performance/phase14/webgpu-benchmark.json)
  */
 import { chromium } from 'playwright';
@@ -68,6 +80,41 @@ function parseArgs(argv) {
     else if (a === '--steps-per-frame') args.stepsPerFrame = next().split(',').map(Number);
     else if (a === '--skip-ab') args.skipAb = true;
     else if (a === '--headed') args.headed = true;
+    else if (a === '--no-sandbox') args.noSandbox = true;
+    else if (a === '--real-gpu') args.realGpu = true;
+    else if (a === '--bind-group-cache') (args.orchestration ??= {}).bindGroupCache = next() !== 'off';
+    else if (a === '--pack-params') (args.orchestration ??= {}).packParamWrites = next() === 'on';
+    else if (a === '--death-compaction') {
+      const mode = next();
+      if (!['serial', 'parallel', 'blocked'].includes(mode)) throw new Error('--death-compaction expects serial|parallel|blocked');
+      (args.kernels ??= {}).deathCompaction = mode;
+    } else if (a === '--force-workgroup-size') {
+      const size = Number(next());
+      if (![32, 64, 128, 256].includes(size)) throw new Error('--force-workgroup-size expects 32|64|128|256');
+      (args.kernels ??= {}).forceWorkgroupSize = size;
+    } else if (a === '--force-kernel') {
+      const mode = next();
+      if (!['linked-list', 'sorted', 'sorted-culled'].includes(mode)) throw new Error('--force-kernel expects linked-list|sorted|sorted-culled');
+      (args.kernels ??= {}).forceKernel = mode;
+    } else if (a === '--await-latency') args.awaitLatency = true;
+    else if (a === '--metrics-mode') {
+      const mode = next();
+      if (!['blocking', 'lagged'].includes(mode)) throw new Error('--metrics-mode expects blocking|lagged');
+      args.metricsMode = mode;
+    } else if (a === '--pipeline-depth') {
+      const depth = Number(next());
+      if (depth !== 1 && depth !== 2) throw new Error('--pipeline-depth expects 1|2');
+      (args.orchestration ??= {}).pipelineDepth = depth;
+    } else if (a === '--quiet-fast-path') {
+      const v = next();
+      if (v !== 'on' && v !== 'off') throw new Error('--quiet-fast-path expects on|off');
+      (args.orchestration ??= {}).quietFastPath = v === 'on';
+    } else if (a === '--topology-merge') {
+      const mode = next();
+      if (!['rebuild', 'incremental', 'epoch'].includes(mode)) throw new Error('--topology-merge expects rebuild|incremental|epoch');
+      args.topologyMerge = mode;
+    } else if (a === '--variants') args.variants = next().split(',');
+    else if (a === '--selftest') args.selftest = true;
     else if (a === '--out') args.out = next();
     else throw new Error(`Unknown option ${a}`);
   }
@@ -97,15 +144,17 @@ async function main() {
   const browser = await chromium.launch({
     headless: !args.headed,
     args: [
+      ...(args.noSandbox ? ['--no-sandbox'] : []),
       // Chromium WebGPU flags. Requirements have shifted across Chromium
       // releases (WebGPU has been unflagged for many platforms since ~M113,
       // but headless + some Linux/software-rendering configurations still
       // need these). Harmless no-ops when already unflagged.
       '--enable-unsafe-webgpu',
-      '--enable-features=Vulkan,UseSkiaRenderer',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
       '--ignore-gpu-blocklist',
+      ...(args.realGpu
+        ? // Phase 16: real hardware. Do not force software GL/ANGLE; let Dawn pick the native backend (D3D12/Metal/Vulkan).
+          ['--enable-webgpu-developer-features']
+        : ['--enable-features=Vulkan,UseSkiaRenderer', '--use-gl=angle', '--use-angle=swiftshader']),
     ],
   });
 
@@ -121,7 +170,16 @@ async function main() {
       warmupSteps: args.warmup,
       backends: args.backends,
       stepsPerFrameSweep: args.stepsPerFrame,
-      abVariants: args.skipAb ? ['baseline'] : ['baseline', 'renderDisabled', 'metricsDisabled', 'gpuTimestampsDisabled'],
+      abVariants: args.variants ?? (args.skipAb ? ['baseline'] : ['baseline', 'renderDisabled', 'metricsDisabled', 'gpuTimestampsDisabled']),
+      // Phase 16 (additive): requested orchestration switches; null = stepper defaults.
+      orchestration: args.orchestration ?? null,
+      // Phase 17 (additive): requested GPU kernel variants; null = Phase 16 kernels (serial death compaction, force workgroup 128).
+      kernels: args.kernels ?? null,
+      // Phase 19 (additive): requested worker topology-merge mode; null = 'incremental'.
+      topologyMerge: args.topologyMerge ?? null,
+      metricsMode: args.metricsMode ?? null,
+      // Phase 16 (additive): true when Chromium was launched without the software-rendering flags.
+      realGpuFlags: Boolean(args.realGpu),
     },
     runs: [],
     errors: [],
@@ -134,16 +192,56 @@ async function main() {
     });
     page.on('pageerror', (error) => console.error('[page error]', error));
 
-    await page.goto(new URL('benchmark.html', args.baseUrl).toString(), { waitUntil: 'load' });
+    const benchmarkUrl = new URL('benchmark.html', args.baseUrl).toString();
+    const response = await page.goto(benchmarkUrl, { waitUntil: 'load' });
+    if (!response || !response.ok()) {
+      throw new Error(`Loading ${benchmarkUrl} returned HTTP ${response ? response.status() : 'no response'}. Is the preview server running and is --base-url correct?`);
+    }
+    // Fail fast with a diagnosable message if the page is not the benchmark harness (e.g. a stale/missing dist/benchmark.html makes
+    // `vite preview` fall back to index.html, so the window.__cepc* hooks never exist).
+    try {
+      await page.waitForFunction(() => typeof window.__cepcSetBackend === 'function' && typeof window.__cepcRunBenchmark === 'function', undefined, { timeout: 20000 });
+    } catch {
+      const title = await page.title();
+      throw new Error(
+        `${benchmarkUrl} loaded (title: "${title}") but the benchmark hooks (window.__cepcSetBackend/__cepcRunBenchmark) were not defined. ` +
+          'Expected title "CEPC Phase 14 Benchmark Harness". Likely causes: dist/ was built before benchmark.html existed or is stale (rebuild with `pnpm run build`), ' +
+          'the server on this port is not `vite preview` of this repo, or benchmark-main.ts threw during load (check the [page error] lines above).',
+      );
+    }
     await page.evaluate(() => window.__cepcReady);
 
-    for (const backend of args.backends) {
+    if (args.awaitLatency) {
+      // Phase 20: raw mapAsync / onSubmittedWorkDone latency and pipelining probe (await-latency.ts), no CEPC code involved.
+      console.log('Running the await-latency probe...');
+      const probe = await page.evaluate(() => window.__cepcRunAwaitLatency());
+      report.awaitLatency = probe;
+      console.log(`  adapter: ${probe.adapter ? `${probe.adapter.vendor} ${probe.adapter.description}` : 'unknown'}`);
+      console.log(`  onSubmittedWorkDone median ${probe.onSubmittedWorkDone.medianMs.toFixed(2)} ms (p95 ${probe.onSubmittedWorkDone.p95Ms.toFixed(2)})`);
+      console.log(`  copy + mapAsync    median ${probe.copyMap.medianMs.toFixed(2)} ms (p95 ${probe.copyMap.p95Ms.toFixed(2)}, min ${probe.copyMap.minMs.toFixed(2)})`);
+      for (const c of probe.computeCopyMap) console.log(`  compute(work=${c.work}) + copy + mapAsync median ${c.stats.medianMs.toFixed(2)} ms`);
+      for (const p of probe.pipelinedPerStep) console.log(`  work=${p.work} depth ${p.depth}: ${p.perStepMs.toFixed(2)} ms per step`);
+    }
+
+    if (args.selftest) {
+      // Phase 17: exact-output check of the death-compaction kernel variants on the real device (kernel-selftest.ts).
+      console.log('Running kernel self-test (death compaction variants; Phase 18 force-kernel variants vs brute force)...');
+      const selfTest = await page.evaluate(() => window.__cepcRunKernelSelfTest());
+      report.selfTest = selfTest;
+      console.log(`  adapter: ${selfTest.adapter ? `${selfTest.adapter.vendor} ${selfTest.adapter.description}` : 'unknown'}`);
+      console.log(`  ${selfTest.cases.length} cases; ${selfTest.passed ? 'PASSED' : 'FAILED'}`);
+      if (Array.isArray(selfTest.pipelineCases)) console.log(`  pipeline guard: ${selfTest.pipelineCases.filter((c) => c.passed).length}/${selfTest.pipelineCases.length} cases passed`);
+      for (const failure of selfTest.failures) console.error('  FAIL: ' + failure);
+      if (!selfTest.passed) process.exitCode = 1;
+    }
+
+    for (const backend of args.selftest || args.awaitLatency ? [] : args.backends) {
       await setBackend(page, backend);
       for (const particleCount of args.sizes) {
         const variants = [
           { name: 'baseline', renderEnabled: true, metricsEnabled: true, gpuTimestamps: true, stepsPerFrame: 1 },
         ];
-        if (!args.skipAb) {
+        if (!args.skipAb || args.variants) {
           variants.push(
             { name: 'renderDisabled', renderEnabled: false, metricsEnabled: true, gpuTimestamps: true, stepsPerFrame: 1 },
             { name: 'metricsDisabled', renderEnabled: true, metricsEnabled: false, gpuTimestamps: true, stepsPerFrame: 1 },
@@ -162,7 +260,8 @@ async function main() {
         }
         // CPU backend does not implement render/metrics/gpuTimestamps toggles
         // (they are no-ops there); only the baseline variant is meaningful.
-        const effectiveVariants = backend === 'CPU' ? variants.slice(0, 1) : variants;
+        const selectedVariants = args.variants ? variants.filter((v) => args.variants.includes(v.name)) : variants;
+        const effectiveVariants = backend === 'CPU' ? selectedVariants.slice(0, 1) : selectedVariants;
 
         for (const variant of effectiveVariants) {
           const label = `${backend} N=${particleCount} ${variant.name}`;
@@ -176,6 +275,10 @@ async function main() {
               metricsEnabled: variant.metricsEnabled,
               gpuTimestamps: variant.gpuTimestamps,
               stepsPerFrame: variant.stepsPerFrame,
+              ...(args.orchestration ? { orchestration: args.orchestration } : {}),
+              ...(args.kernels ? { kernels: args.kernels } : {}),
+              ...(args.topologyMerge ? { topologyMerge: args.topologyMerge } : {}),
+              ...(args.metricsMode ? { metricsMode: args.metricsMode } : {}),
             });
             report.runs.push({ backend, particleCount, variant: variant.name, result });
             console.log(

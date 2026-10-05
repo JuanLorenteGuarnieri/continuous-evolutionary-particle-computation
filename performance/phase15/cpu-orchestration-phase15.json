@@ -1,0 +1,68 @@
+{
+  "schema": "cepc-cpu-orchestration/1",
+  "timed": true,
+  "scope": "CPU-only JS orchestration under a no-op software GPU; not GPU time",
+  "label": "phase15",
+  "stepper": "src/webgpu-mfm/src/MfmWebGPUStepper.ts",
+  "node": "v22.22.2",
+  "results": [
+    {
+      "particles": 1000,
+      "stepsPerRepeat": 300,
+      "repeats": 7,
+      "stepMeanMsMedianOfRepeats": 0.17511739333332912,
+      "stepP50MsMedianOfRepeats": 0.09663999999997941,
+      "stepP95MsMedianOfRepeats": 0.1750200000001314,
+      "repeatMeansMs": [
+        0.2013,
+        0.1408,
+        0.1164,
+        0.1751,
+        0.1353,
+        0.2061
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0043,
+        "encode.passesMs": 0.0154,
+        "encode.snapshotMs": 0.0512,
+        "encode.writeParamsMs": 0.004,
+        "stepUnsafe.encodeMs": 0.1462,
+        "stepUnsafe.finishNormalSyncMs": 0.0246,
+        "stepUnsafe.submitMs": 0.0065,
+        "sync.compactReadbackMs": 0.0216,
+        "sync.eventMapBuildMs": 0.0005,
+        "sync.evolutionCallbackMs": 0.0004,
+        "sync.populationUpdateMs": 0.0003
+      }
+    },
+    {
+      "particles": 10000,
+      "stepsPerRepeat": 300,
+      "repeats": 7,
+      "stepMeanMsMedianOfRepeats": 1.0576359533333304,
+      "stepP50MsMedianOfRepeats": 1.0213479999997617,
+      "stepP95MsMedianOfRepeats": 1.4296140000001287,
+      "repeatMeansMs": [
+        0.924,
+        1.0008,
+        1.0576,
+        1.1357,
+        0.8612,
+        1.2486
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0076,
+        "encode.passesMs": 0.0203,
+        "encode.snapshotMs": 0.527,
+        "encode.writeParamsMs": 0.0089,
+        "stepUnsafe.encodeMs": 1.0033,
+        "stepUnsafe.finishNormalSyncMs": 0.0332,
+        "stepUnsafe.submitMs": 0.0142,
+        "sync.compactReadbackMs": 0.0271,
+        "sync.eventMapBuildMs": 0.0006,
+        "sync.evolutionCallbackMs": 0.0002,
+        "sync.populationUpdateMs": 0.0001
+      }
+    }
+  ]
+}

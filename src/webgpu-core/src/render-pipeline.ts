@@ -28,6 +28,24 @@ export class RenderPipeline {
   private chargeBuffer: GPUBuffer | null = null;
   private roleBuffer: GPUBuffer | null = null;
   private boundParticleCount = 0;
+  /**
+   * Phase 16: bind-group memo. The stepper hands the renderer the write-side ping-pong buffers, which
+   * alternate every step, so Phase 15 recreated this bind group on every rendered step although only two
+   * distinct states exist. KEY: identity of (positions, health, charge, role) (the uniform buffer is constant
+   * for a pipeline's life). SIZE: at most 2 entries (oldest evicted). INVALIDATION: the stepper recreates all of its
+   * data buffers together, role included, so a new role buffer drops the whole memo before any lookup; destroy()
+   * and creating the uniform buffer drop it too. A lookup compares identities, so an entry can only be returned
+   * for exactly the buffers it was built from.
+   */
+  private bindGroupMemo: Array<{
+    positions: GPUBuffer;
+    health: GPUBuffer;
+    charge: GPUBuffer;
+    role: GPUBuffer;
+    group: GPUBindGroup;
+  }> = [];
+  /** Phase 16: createBindGroup() calls issued to the device (hit-rate evidence for tests/benchmarks). */
+  public bindGroupsCreated = 0;
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -184,6 +202,8 @@ export class RenderPipeline {
    */
   setParticleBuffers(state: RenderParticleState): void {
     const { positions, health, charge, role, particleCount } = state;
+    // A new role buffer means the data buffers were recreated: every memoized group is stale.
+    if (this.roleBuffer !== role) this.bindGroupMemo.length = 0;
     const changed =
       this.positionsBuffer !== positions ||
       this.healthBuffer !== health ||
@@ -218,6 +238,7 @@ export class RenderPipeline {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
       this.bindGroup = null;
+      this.bindGroupMemo.length = 0;
     }
 
     this.createBindGroup();
@@ -250,7 +271,19 @@ export class RenderPipeline {
       return;
     }
 
-    this.bindGroup = this.device.createBindGroup({
+    for (const entry of this.bindGroupMemo) {
+      if (
+        entry.positions === this.positionsBuffer &&
+        entry.health === this.healthBuffer &&
+        entry.charge === this.chargeBuffer &&
+        entry.role === this.roleBuffer
+      ) {
+        this.bindGroup = entry.group;
+        return;
+      }
+    }
+
+    const group = this.device.createBindGroup({
       layout: this.bindGroupLayout,
       entries: [
         { binding: 0, resource: { buffer: this.uniformBuffer } },
@@ -260,13 +293,27 @@ export class RenderPipeline {
         { binding: 4, resource: { buffer: this.roleBuffer } },
       ],
     });
+    this.bindGroupsCreated++;
+    this.bindGroup = group;
+    if (this.bindGroupMemo.length >= 2) this.bindGroupMemo.shift();
+    this.bindGroupMemo.push({
+      positions: this.positionsBuffer,
+      health: this.healthBuffer,
+      charge: this.chargeBuffer,
+      role: this.roleBuffer,
+      group,
+    });
   }
 
-  /** Render the currently bound simulation state. */
+  /**
+   * Render the currently bound simulation state.
+   * Phase 19: optional `timestampWrites` (a GPURenderPassTimestampWrites) lets the caller measure this pass on the GPU.
+   */
   render(
     commandEncoder: GPUCommandEncoder,
     textureView: GPUTextureView,
     particleCount = this.boundParticleCount,
+    timestampWrites?: { querySet: GPUQuerySet; beginningOfPassWriteIndex?: number; endOfPassWriteIndex?: number },
   ): void {
     if (!this.pipeline || !this.bindGroup) return;
 
@@ -278,6 +325,7 @@ export class RenderPipeline {
         // CPU renderer clears to pure black.
         clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
       }],
+      ...(timestampWrites ? { timestampWrites } : {}),
     });
 
     renderPass.setPipeline(this.pipeline);
@@ -287,9 +335,11 @@ export class RenderPipeline {
   }
 
   destroy(): void {
+    // Phase 16: GPURenderPipeline and GPUBindGroupLayout have no destroy() in WebGPU (only GPUBuffer,
+    // GPUTexture, GPUQuerySet and GPUDevice do). The Phase 15 calls to them threw a TypeError (hidden by the
+    // file's @ts-nocheck) after the uniform buffer was destroyed and before the fields below were cleared.
+    this.bindGroupMemo.length = 0;
     this.uniformBuffer?.destroy();
-    this.pipeline?.destroy();
-    this.bindGroupLayout?.destroy();
     this.bindGroup = null;
     this.uniformBuffer = null;
     this.pipeline = null;

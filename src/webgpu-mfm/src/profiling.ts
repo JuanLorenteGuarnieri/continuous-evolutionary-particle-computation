@@ -221,10 +221,19 @@ export const MFM_PASS_LABELS = [
   'communicationTransmit',
   'localSuccess',
   'healthUpdate',
+  'sortCount',
+  'sortScan',
+  'sortScatter',
   'force',
   'mechanics',
   'deathCompaction',
   'reproductionCompaction',
+  /**
+   * Phase 19: the render pass of an interactive/benchmark step with rendering enabled (a GPURenderPass, not a compute pass).
+   * It is recorded in the same query set but is NOT part of `sumNs` / `spanNs` / `sumMs` / `spanMs`, which keep their Phase 14-18
+   * meaning (compute passes only), so historical comparisons stay valid. Read it from `renderNs` / `GpuAggregate.renderMs`.
+   */
+  'render',
 ] as const;
 
 export type MfmPassLabel = (typeof MFM_PASS_LABELS)[number];
@@ -236,9 +245,11 @@ export const MFM_PASS_GROUPS: Record<string, readonly string[]> = {
   pressure: ['pressure'],
   communication: ['communicationSelect', 'communicationTransmit'],
   localSuccessAndHealth: ['localSuccess', 'healthUpdate'],
+  forceSort: ['sortCount', 'sortScan', 'sortScatter'],
   force: ['force'],
   mechanics: ['mechanics'],
   compaction: ['deathCompaction', 'reproductionCompaction'],
+  render: ['render'],
 };
 
 export interface GpuPassTiming {
@@ -251,10 +262,12 @@ export interface GpuPassTiming {
 
 export interface GpuStepTiming {
   passes: GpuPassTiming[];
-  /** Sum of the individual pass durations. */
+  /** Sum of the individual COMPUTE pass durations (the render pass, label 'render', is excluded: see `renderNs`). */
   sumNs: number;
-  /** Last pass end minus first pass begin: includes any GPU idle gaps between passes. */
+  /** Last compute pass end minus first compute pass begin: includes any GPU idle gaps between passes. */
   spanNs: number;
+  /** Duration of the render pass of this step in ns (0 when the step had none). Phase 19. */
+  renderNs: number;
 }
 
 export interface TimestampWritesDescriptor {
@@ -460,13 +473,13 @@ export class GpuPassTimestampProfiler {
     const ordinals = new Map<string, number>();
     const passes: GpuPassTiming[] = [];
     let sumNs = 0;
+    let renderNs = 0;
     let firstBegin = 0n;
     let lastEnd = 0n;
+    let computeSeen = false;
     for (let i = 0; i < passCount; i++) {
       const begin = values[i * 2];
       const end = values[i * 2 + 1];
-      if (i === 0 || begin < firstBegin) firstBegin = begin;
-      if (i === 0 || end > lastEnd) lastEnd = end;
       let ns = 0;
       if (end >= begin) {
         ns = Number(end - begin);
@@ -477,10 +490,17 @@ export class GpuPassTimestampProfiler {
       const ordinal = ordinals.get(label) ?? 0;
       ordinals.set(label, ordinal + 1);
       passes.push({ label, ordinal, ns });
+      if (label === 'render') {
+        renderNs += ns;
+        continue; // Phase 19: keep sum/span compute-only (Phase 14-18 definition)
+      }
+      if (!computeSeen || begin < firstBegin) firstBegin = begin;
+      if (!computeSeen || end > lastEnd) lastEnd = end;
+      computeSeen = true;
       sumNs += ns;
     }
     const spanNs = lastEnd >= firstBegin ? Number(lastEnd - firstBegin) : 0;
-    return { passes, sumNs, spanNs };
+    return { passes, sumNs, spanNs, renderNs };
   }
 }
 
@@ -514,6 +534,8 @@ export interface GpuAggregate {
   meanGapMs: number;
   labels: GpuLabelAggregate[];
   groups: GpuGroupAggregate[];
+  /** Phase 19: render-pass GPU time per step in ms; null when no step in the window had a render pass. */
+  renderMs: SampleStats | null;
   /** Fraction of pass measurements that reported exactly 0 ns (quantization indicator). */
   zeroDurationFraction: number;
   /** Smallest non-zero pass duration observed, in ns (Infinity-safe: 0 when none). */
@@ -600,6 +622,7 @@ export function aggregateGpuSteps(steps: readonly GpuStepTiming[]): GpuAggregate
     meanGapMs: spanStats.mean - sumStats.mean,
     labels,
     groups,
+    renderMs: steps.some((step) => step.renderNs > 0) ? summarizeSamples(steps.map((step) => step.renderNs / NS_PER_MS)) : null,
     zeroDurationFraction: totalPasses > 0 ? zeroPasses / totalPasses : 0,
     minNonZeroNs: Number.isFinite(minNonZero) ? minNonZero : 0,
   };

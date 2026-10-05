@@ -1,0 +1,64 @@
+{
+  "schema": "cepc-cpu-orchestration/1",
+  "timed": true,
+  "scope": "CPU-only JS orchestration under a no-op software GPU; not GPU time",
+  "label": "r1-p16on",
+  "orchestration": {
+    "bindGroupCache": true,
+    "packParamWrites": false
+  },
+  "stepper": "src/webgpu-mfm/src/MfmWebGPUStepper.ts",
+  "node": "v22.22.2",
+  "results": [
+    {
+      "particles": 1000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.07315793999999717,
+      "stepP50MsMedianOfRepeats": 0.05975599999999304,
+      "stepP95MsMedianOfRepeats": 0.08912200000003168,
+      "repeatMeansMs": [
+        0.0818,
+        0.0732,
+        0.0638
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.passesMs": 0.0037,
+        "encode.snapshotMs": 0.0248,
+        "encode.writeParamsMs": 0.0023,
+        "stepUnsafe.encodeMs": 0.0544,
+        "stepUnsafe.finishNormalSyncMs": 0.0095,
+        "stepUnsafe.submitMs": 0.0048,
+        "sync.compactReadbackMs": 0.0066,
+        "sync.eventMapBuildMs": 0.0003,
+        "sync.evolutionCallbackMs": 0.0002,
+        "sync.populationUpdateMs": 0.0002
+      }
+    },
+    {
+      "particles": 10000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.6358693933333333,
+      "stepP50MsMedianOfRepeats": 0.5934060000001864,
+      "stepP95MsMedianOfRepeats": 0.8081750000000056,
+      "repeatMeansMs": [
+        0.6359,
+        0.621,
+        0.693
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.passesMs": 0.0039,
+        "encode.snapshotMs": 0.3057,
+        "encode.writeParamsMs": 0.0065,
+        "stepUnsafe.encodeMs": 0.5856,
+        "stepUnsafe.finishNormalSyncMs": 0.0357,
+        "stepUnsafe.submitMs": 0.01,
+        "sync.compactReadbackMs": 0.0291,
+        "sync.eventMapBuildMs": 0.001,
+        "sync.evolutionCallbackMs": 0.0004,
+        "sync.populationUpdateMs": 0.0003
+      }
+    }
+  ]
+}

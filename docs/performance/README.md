@@ -49,3 +49,11 @@ This document outlines performance optimization strategies for the CEPC platform
 - Memory usage tracking
 - GPU utilization metrics
 
+## Phase 17 - GPU kernel optimization (hardware GPU timing)
+
+First hardware GPU baseline and A/B (Intel HD Graphics 520): see docs/phases/17-phase17-gpu-kernel-optimization.md, performance/phase17/README.md and performance/benchmark-history.md.
+
+- Death compaction runs a parallel stable-scan kernel by default (KernelOptions.deathCompaction); the Phase 16 serial kernel remains selectable (--death-compaction serial). GPU time of that pass fell 75-94 %.
+- Regression guard for that kernel on a real GPU: node tools/bench/benchmark-webgpu.mjs --selftest --real-gpu --headed --base-url <preview url> --out performance/phase17/kernel-selftest.json (exact-output check, exits non-zero on any mismatch).
+- Reproduce the A/B: tools/bench/run-phase17-ab.ps1; compare with tools/bench/compare-gpu-profiles.mjs; summarize with tools/bench/summarize-gpu-profile.mjs.
+

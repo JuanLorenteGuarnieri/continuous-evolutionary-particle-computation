@@ -1,0 +1,3371 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase17-ab-comparison",
+  "baseline": "ab-linked",
+  "comparisons": [
+    {
+      "candidate": "ab-sorted",
+      "variant": "baseline",
+      "kernels": "{\"forceKernel\":\"sorted\"}",
+      "sizes": {
+        "200": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 6.925000004768371,
+              "cand": 5.763999986648559,
+              "deltaPct": -16.76534321040257,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 10.33999995589256,
+              "cand": 7.100000023841858,
+              "deltaPct": -31.334622300499056,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 17721.07035414674,
+              "cand": 20990.764064862426,
+              "deltaPct": 18.450881608009496,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 0.5730159400000002,
+              "cand": 0.5508655200000001,
+              "deltaPct": -3.8655853098955864,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.02484045,
+              "cand": 0.02501456000000001,
+              "deltaPct": 0.7009132282225505,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.011081520000000001,
+              "cand": 0.011180609999999997,
+              "deltaPct": 0.8941914105645806,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.01671061,
+              "cand": 0.01666061,
+              "deltaPct": -0.2992111000137124,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.011668979999999994,
+              "cand": 0.011713079999999996,
+              "deltaPct": 0.37792506285898,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006310729999999998,
+              "cand": 0.006677429999999997,
+              "deltaPct": 5.810738218874828,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.015243070000000004,
+              "cand": 0.0154748,
+              "deltaPct": 1.5202318168190259,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.0158039,
+              "cand": 0.015428930000000006,
+              "deltaPct": -2.372642195913626,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.015115590000000007,
+              "cand": 0.015179740000000013,
+              "deltaPct": 0.42439626901765554,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.014095600000000003,
+              "cand": 0.014577239999999997,
+              "deltaPct": 3.4169528079683955,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.3643252000000002,
+              "cand": 0.25585769,
+              "deltaPct": -29.77216783247497,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.01545813,
+              "cand": 0.015573930000000003,
+              "deltaPct": 0.7491203657881174,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.05337078000000002,
+              "cand": 0.053595840000000006,
+              "deltaPct": 0.4216914199117667,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.019181420000000015,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.042716060000000014,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.030719609999999994,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "500": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 8.357000006437302,
+              "cand": 6.119999996423721,
+              "deltaPct": -26.767979039014538,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 12.909999978542327,
+              "cand": 7.620000022649764,
+              "deltaPct": -40.975987332959384,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 40131.63174907516,
+              "cand": 51245.25981096283,
+              "deltaPct": 27.692938406731457,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.2211966600000002,
+              "cand": 0.9405402200000004,
+              "deltaPct": -22.982083819325197,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025054630000000015,
+              "cand": 0.02688704,
+              "deltaPct": 7.3136581941141605,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.011286460000000003,
+              "cand": 0.012114779999999997,
+              "deltaPct": 7.339059368482174,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.017678120000000005,
+              "cand": 0.017521400000000006,
+              "deltaPct": -0.8865196072885524,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.013757339999999996,
+              "cand": 0.012760600000000006,
+              "deltaPct": -7.245150588703855,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006741569999999995,
+              "cand": 0.006783269999999996,
+              "deltaPct": 0.6185502783476319,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.017485590000000006,
+              "cand": 0.0170306,
+              "deltaPct": -2.602085488679568,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.01669308,
+              "cand": 0.016874730000000004,
+              "deltaPct": 1.0881754595317665,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.016504699999999994,
+              "cand": 0.016632219999999996,
+              "deltaPct": 0.7726284028186065,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.015212239999999995,
+              "cand": 0.015773099999999998,
+              "deltaPct": 3.686899496721084,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.9873636899999997,
+              "cand": 0.6042772300000001,
+              "deltaPct": -38.798921195896895,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.017344669999999996,
+              "cand": 0.017214749999999997,
+              "deltaPct": -0.7490485549739412,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.07075055999999998,
+              "cand": 0.07094642000000002,
+              "deltaPct": 0.2768317310845988,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020552250000000005,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04497603,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.03500780999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "1000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 10.178999999761581,
+              "cand": 7.672000005245208,
+              "deltaPct": -24.629138368946784,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 15.010000002384185,
+              "cand": 9.710000044107437,
+              "deltaPct": -35.309793187441024,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 70377.92948249556,
+              "cand": 88417.32979664014,
+              "deltaPct": 25.63218390593795,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.8728116399999992,
+              "cand": 1.1607318199999999,
+              "deltaPct": -38.0219668006762,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.027557070000000006,
+              "cand": 0.026827070000000012,
+              "deltaPct": -2.6490479575658603,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.011773280000000002,
+              "cand": 0.012405740000000007,
+              "deltaPct": 5.3719948901241175,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.018915570000000003,
+              "cand": 0.019525559999999997,
+              "deltaPct": 3.224803693465194,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.013623070000000001,
+              "cand": 0.013048920000000006,
+              "deltaPct": -4.214541949795424,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006795709999999996,
+              "cand": 0.007047369999999996,
+              "deltaPct": 3.7032186482354446,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.018128030000000003,
+              "cand": 0.01704809000000001,
+              "deltaPct": -5.957293759994849,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.01761142000000001,
+              "cand": 0.016895510000000002,
+              "deltaPct": -4.065032802579274,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.01644726,
+              "cand": 0.016076359999999998,
+              "deltaPct": -2.25508686553262,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.01636894000000001,
+              "cand": 0.016153960000000002,
+              "deltaPct": -1.3133409982564959,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 1.6004099400000005,
+              "cand": 0.7950392399999999,
+              "deltaPct": -50.32277542590121,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.020072150000000004,
+              "cand": 0.020217180000000008,
+              "deltaPct": 0.7225434245957921,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.09941351000000001,
+              "cand": 0.10030431000000002,
+              "deltaPct": 0.8960552745798945,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020384690000000004,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04484677999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.03661528000000001,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "2000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 10.871999998092651,
+              "cand": 10.847999993562699,
+              "deltaPct": -0.22075059358133664,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 13.505000001192093,
+              "cand": 13.204999929666519,
+              "deltaPct": -2.2214000111002785,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 135768.10808020356,
+              "cand": 137230.68478336203,
+              "deltaPct": 1.0772608706416293,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 2.40047776,
+              "cand": 1.2365283000000005,
+              "deltaPct": -48.488241774004166,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.028273770000000007,
+              "cand": 0.02601043999999999,
+              "deltaPct": -8.00505203232543,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014875619999999996,
+              "cand": 0.014020549999999998,
+              "deltaPct": -5.748130161969707,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.023892079999999993,
+              "cand": 0.02136459,
+              "deltaPct": -10.578777569805535,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.015609739999999999,
+              "cand": 0.013824860000000005,
+              "deltaPct": -11.434399291724231,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.008071549999999993,
+              "cand": 0.006948289999999995,
+              "deltaPct": -13.916286215163124,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.01938300000000001,
+              "cand": 0.017968829999999998,
+              "deltaPct": -7.29592942269005,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.01914304000000001,
+              "cand": 0.016966360000000003,
+              "deltaPct": -11.370607803149374,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.016768830000000002,
+              "cand": 0.01641892,
+              "deltaPct": -2.086669135533021,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.018933920000000003,
+              "cand": 0.018363880000000003,
+              "deltaPct": -3.010681359169156,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 2.0433755500000013,
+              "cand": 0.78304774,
+              "deltaPct": -61.678716376928385,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.025822950000000008,
+              "cand": 0.026563760000000006,
+              "deltaPct": 2.86880468730334,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.15713670000000002,
+              "cand": 0.15796005000000002,
+              "deltaPct": 0.523970530118044,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020861319999999996,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04569515,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.04373595999999998,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "5000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 20.51700000166893,
+              "cand": 18.296000010967255,
+              "deltaPct": -10.825169325539845,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 23.939999973773954,
+              "cand": 25.650000023841855,
+              "deltaPct": 7.142857359821178,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 205187.1306571421,
+              "cand": 226090.88853719196,
+              "deltaPct": 10.187655440720137,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 5.318208520000001,
+              "cand": 2.12144568,
+              "deltaPct": -60.10976869331179,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.026693749999999995,
+              "cand": 0.027842030000000007,
+              "deltaPct": 4.30168110512765,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.037691079999999995,
+              "cand": 0.03127611000000001,
+              "deltaPct": -17.019862524501782,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.03322944,
+              "cand": 0.02796378000000001,
+              "deltaPct": -15.84636996590971,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.019090520000000003,
+              "cand": 0.017200600000000007,
+              "deltaPct": -9.899782719381117,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.007638209999999996,
+              "cand": 0.007211489999999992,
+              "deltaPct": -5.58664922802599,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.022278090000000007,
+              "cand": 0.02102136,
+              "deltaPct": -5.641102985040494,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.02115625000000001,
+              "cand": 0.02070133000000001,
+              "deltaPct": -2.15028655834563,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.018823849999999996,
+              "cand": 0.01806479,
+              "deltaPct": -4.032437572547569,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.026997950000000017,
+              "cand": 0.025092069999999994,
+              "deltaPct": -7.059350802561016,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 4.73000696,
+              "cand": 1.3958031599999998,
+              "deltaPct": -70.49046287238446,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.03934276000000001,
+              "cand": 0.040025249999999984,
+              "deltaPct": 1.7347283210429896,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.3275523999999999,
+              "cand": 0.32818731,
+              "deltaPct": 0.19383463531334216,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.033093720000000014,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04731678,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.07352639000000004,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "10000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 40.60200000166893,
+              "cand": 35.9210000038147,
+              "deltaPct": -11.528988714008717,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 52.32499995231629,
+              "cand": 49.41500008702278,
+              "deltaPct": -5.561394874238675,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 216962.09672058042,
+              "cand": 240459.75905656427,
+              "deltaPct": 10.83030754733434,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 10.489176249999998,
+              "cand": 3.8704060000000005,
+              "deltaPct": -63.100953709305806,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.028685380000000014,
+              "cand": 0.029003660000000007,
+              "deltaPct": 1.1095547627397426,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.05689574999999999,
+              "cand": 0.055358300000000006,
+              "deltaPct": -2.7022229252624004,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.039580229999999994,
+              "cand": 0.03736446999999999,
+              "deltaPct": -5.598148368516314,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.02432787000000001,
+              "cand": 0.024436320000000004,
+              "deltaPct": 0.4457850194036552,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006989109999999994,
+              "cand": 0.006904879999999994,
+              "deltaPct": -1.205160599847469,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.02568878000000001,
+              "cand": 0.02484296000000002,
+              "deltaPct": -3.292565859491912,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.024835420000000004,
+              "cand": 0.02452965000000001,
+              "deltaPct": -1.2311851380004581,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.022298760000000015,
+              "cand": 0.02191546,
+              "deltaPct": -1.7189296624566264,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.037053600000000006,
+              "cand": 0.036049470000000014,
+              "deltaPct": -2.709939115227648,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 9.550860830000003,
+              "cand": 2.7236773599999986,
+              "deltaPct": -71.48238877646804,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.062347389999999996,
+              "cand": 0.06483566,
+              "deltaPct": 3.9909770080191134,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.6005264299999999,
+              "cand": 0.6041322400000002,
+              "deltaPct": 0.6004415159546375,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.04641765999999998,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.047545149999999994,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.11093817999999997,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "candidate": "ab-sorted-culled",
+      "variant": "baseline",
+      "kernels": "{\"forceKernel\":\"sorted-culled\"}",
+      "sizes": {
+        "200": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 6.925000004768371,
+              "cand": 5.801999994516373,
+              "deltaPct": -16.216606635071923,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 10.33999995589256,
+              "cand": 7,
+              "deltaPct": -32.30174052359798,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 17721.07035414674,
+              "cand": 21285.653471721966,
+              "deltaPct": 20.114942530777267,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 0.5730159400000002,
+              "cand": 0.5507437899999996,
+              "deltaPct": -3.8868290470245195,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.02484045,
+              "cand": 0.024983750000000006,
+              "deltaPct": 0.5768816587461416,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.011081520000000001,
+              "cand": 0.011288229999999995,
+              "deltaPct": 1.8653578209486932,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.01671061,
+              "cand": 0.01701134,
+              "deltaPct": 1.7996350821424176,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.011668979999999994,
+              "cand": 0.011848159999999998,
+              "deltaPct": 1.5355240989358503,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006310729999999998,
+              "cand": 0.006431559999999994,
+              "deltaPct": 1.9146754812834061,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.015243070000000004,
+              "cand": 0.015550619999999998,
+              "deltaPct": 2.017638179185644,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.0158039,
+              "cand": 0.015312210000000007,
+              "deltaPct": -3.1111940723491833,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.015115590000000007,
+              "cand": 0.015711420000000004,
+              "deltaPct": 3.94182430192931,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.014095600000000003,
+              "cand": 0.014397330000000002,
+              "deltaPct": 2.140597065751002,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.3643252000000002,
+              "cand": 0.25454274,
+              "deltaPct": -30.13309537742658,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.01545813,
+              "cand": 0.01567394,
+              "deltaPct": 1.3960938354121766,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.05337078000000002,
+              "cand": 0.05405918,
+              "deltaPct": 1.28984436802306,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.019065510000000008,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.042424309999999965,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.03129952,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "500": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 8.357000006437302,
+              "cand": 6.048999998569489,
+              "deltaPct": -27.617566185114118,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 12.909999978542327,
+              "cand": 7.399999982118606,
+              "deltaPct": -42.68009299443746,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 40131.63174907516,
+              "cand": 51366.34477216424,
+              "deltaPct": 27.994657913076217,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.2211966600000002,
+              "cand": 0.94527191,
+              "deltaPct": -22.594620427474812,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025054630000000015,
+              "cand": 0.026532939999999984,
+              "deltaPct": 5.900346562691079,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.011286460000000003,
+              "cand": 0.013125709999999999,
+              "deltaPct": 16.296075120099612,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.017678120000000005,
+              "cand": 0.019364650000000008,
+              "deltaPct": 9.540211289435764,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.013757339999999996,
+              "cand": 0.013638139999999997,
+              "deltaPct": -0.8664465659785968,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006741569999999995,
+              "cand": 0.006809899999999993,
+              "deltaPct": 1.013562122769586,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.017485590000000006,
+              "cand": 0.01709972,
+              "deltaPct": -2.2067885613239633,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.01669308,
+              "cand": 0.01689723,
+              "deltaPct": 1.222961850060026,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.016504699999999994,
+              "cand": 0.01689315,
+              "deltaPct": 2.3535720128206243,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.015212239999999995,
+              "cand": 0.015886469999999996,
+              "deltaPct": 4.432154633374188,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.9873636899999997,
+              "cand": 0.6038530500000002,
+              "deltaPct": -38.841882062728025,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.017344669999999996,
+              "cand": 0.017568829999999994,
+              "deltaPct": 1.2923854994070088,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.07075055999999998,
+              "cand": 0.07148721999999998,
+              "deltaPct": 1.0412073063449963,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020202960000000006,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04523923999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.03559943,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "1000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 10.178999999761581,
+              "cand": 7.221000003814697,
+              "deltaPct": -29.059829020691307,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 15.010000002384185,
+              "cand": 8.810000067949295,
+              "deltaPct": -41.305795692538865,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 70377.92948249556,
+              "cand": 91617.04076958315,
+              "deltaPct": 30.17865322731638,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.8728116399999992,
+              "cand": 0.9849997099999998,
+              "deltaPct": -47.40529752367407,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.027557070000000006,
+              "cand": 0.027047939999999993,
+              "deltaPct": -1.8475476529254153,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.011773280000000002,
+              "cand": 0.01330392,
+              "deltaPct": 13.000964896783206,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.018915570000000003,
+              "cand": 0.019864669999999997,
+              "deltaPct": 5.01755960830149,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.013623070000000001,
+              "cand": 0.013665650000000005,
+              "deltaPct": 0.3125580357438071,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006795709999999996,
+              "cand": 0.0069298199999999945,
+              "deltaPct": 1.9734508976986807,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.018128030000000003,
+              "cand": 0.016822149999999998,
+              "deltaPct": -7.203650920701288,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.01761142000000001,
+              "cand": 0.017766440000000005,
+              "deltaPct": 0.8802243089994743,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.01644726,
+              "cand": 0.01696641,
+              "deltaPct": 3.1564528073369242,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.01636894000000001,
+              "cand": 0.016807210000000003,
+              "deltaPct": 2.677448875736571,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 1.6004099400000005,
+              "cand": 0.6110937700000002,
+              "deltaPct": -61.8164224848541,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.020072150000000004,
+              "cand": 0.020155569999999998,
+              "deltaPct": 0.4156007204011218,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.09941351000000001,
+              "cand": 0.09793597000000002,
+              "deltaPct": -1.4862567471966188,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.02097628000000002,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.046042579999999986,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.036643590000000004,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "2000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 10.871999998092651,
+              "cand": 10.188999997377396,
+              "deltaPct": -6.282192796496307,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 13.505000001192093,
+              "cand": 12.80999995470047,
+              "deltaPct": -5.146242476344134,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 135768.10808020356,
+              "cand": 142025.28050714277,
+              "deltaPct": 4.608720350763713,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 2.40047776,
+              "cand": 1.0506700899999997,
+              "deltaPct": -56.23079257355837,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.028273770000000007,
+              "cand": 0.028572849999999997,
+              "deltaPct": 1.0578002155354227,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014875619999999996,
+              "cand": 0.014368910000000006,
+              "deltaPct": -3.406311804146585,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.023892079999999993,
+              "cand": 0.021583810000000002,
+              "deltaPct": -9.661235020140529,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.015609739999999999,
+              "cand": 0.014246450000000004,
+              "deltaPct": -8.733585569010083,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.008071549999999993,
+              "cand": 0.007179929999999997,
+              "deltaPct": -11.046453283446144,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.01938300000000001,
+              "cand": 0.017974750000000005,
+              "deltaPct": -7.26538719496469,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.01914304000000001,
+              "cand": 0.01802065,
+              "deltaPct": -5.86317533683266,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.016768830000000002,
+              "cand": 0.016610510000000002,
+              "deltaPct": -0.9441326556474123,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.018933920000000003,
+              "cand": 0.018443909999999994,
+              "deltaPct": -2.5880007943416334,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 2.0433755500000013,
+              "cand": 0.5983831199999998,
+              "deltaPct": -70.7159498898771,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.025822950000000008,
+              "cand": 0.02485461000000002,
+              "deltaPct": -3.74992012918736,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.15713670000000002,
+              "cand": 0.15605758999999997,
+              "deltaPct": -0.6867332710945626,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.02117633,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04671759999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.04376262,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "5000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 20.51700000166893,
+              "cand": 17.481999987363814,
+              "deltaPct": -14.792611074027572,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 23.939999973773954,
+              "cand": 23.37499995231628,
+              "deltaPct": -2.360066925967529,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 205187.1306571421,
+              "cand": 231406.48864560164,
+              "deltaPct": 12.77826630963072,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 5.318208520000001,
+              "cand": 1.5805569800000003,
+              "deltaPct": -70.28027438081725,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.026693749999999995,
+              "cand": 0.02603546,
+              "deltaPct": -2.4660828845703415,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.037691079999999995,
+              "cand": 0.038421920000000005,
+              "deltaPct": 1.939026422166758,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.03322944,
+              "cand": 0.02730954000000001,
+              "deltaPct": -17.81522649794877,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.019090520000000003,
+              "cand": 0.017521360000000003,
+              "deltaPct": -8.219577046617902,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.007638209999999996,
+              "cand": 0.006868259999999992,
+              "deltaPct": -10.080241313082569,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.022278090000000007,
+              "cand": 0.022553759999999996,
+              "deltaPct": 1.2374041042117534,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.02115625000000001,
+              "cand": 0.020567140000000008,
+              "deltaPct": -2.784567208271788,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.018823849999999996,
+              "cand": 0.01843057,
+              "deltaPct": -2.089264417215373,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.026997950000000017,
+              "cand": 0.026402079999999998,
+              "deltaPct": -2.207093501543705,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 4.73000696,
+              "cand": 0.8381268999999998,
+              "deltaPct": -82.28064129529315,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.03934276000000001,
+              "cand": 0.039326,
+              "deltaPct": -0.042599959941832966,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.3275523999999999,
+              "cand": 0.33261646,
+              "deltaPct": 1.546030497715814,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.03306114999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.047440060000000006,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.07322805,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "10000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 40.60200000166893,
+              "cand": 34.2189999961853,
+              "deltaPct": -15.720900461113375,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 52.32499995231629,
+              "cand": 47.074999999999996,
+              "deltaPct": -10.033444734067105,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 216962.09672058042,
+              "cand": 253877.98624134986,
+              "deltaPct": 17.01490263910586,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 10.489176249999998,
+              "cand": 2.7852139100000004,
+              "deltaPct": -73.44678129514698,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.028685380000000014,
+              "cand": 0.028368640000000004,
+              "deltaPct": -1.1041861742811483,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.05689574999999999,
+              "cand": 0.053826589999999966,
+              "deltaPct": -5.394357223518492,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.039580229999999994,
+              "cand": 0.037406089999999996,
+              "deltaPct": -5.49299486132344,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.02432787000000001,
+              "cand": 0.02381298,
+              "deltaPct": -2.1164614904634367,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006989109999999994,
+              "cand": 0.006894859999999996,
+              "deltaPct": -1.3485264933589265,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.02568878000000001,
+              "cand": 0.025382960000000013,
+              "deltaPct": -1.1904808247024372,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.024835420000000004,
+              "cand": 0.024554750000000007,
+              "deltaPct": -1.1301198046982766,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.022298760000000015,
+              "cand": 0.021766330000000007,
+              "deltaPct": -2.3877112449302427,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.037053600000000006,
+              "cand": 0.03683527999999999,
+              "deltaPct": -0.5892005095321773,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 9.550860830000003,
+              "cand": 1.636231879999999,
+              "deltaPct": -82.86822613035606,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.062347389999999996,
+              "cand": 0.06585642000000001,
+              "deltaPct": 5.628190690901444,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.6005264299999999,
+              "cand": 0.6075963600000001,
+              "deltaPct": 1.1772887331536954,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.046690869999999995,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.0481309,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.11353157000000001,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "candidate": "ab-sorted",
+      "variant": "renderDisabled",
+      "kernels": "{\"forceKernel\":\"sorted\"}",
+      "sizes": {
+        "200": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.330999985933304,
+              "cand": 4.3780000007152555,
+              "deltaPct": -17.876570769699708,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.915000092983245,
+              "cand": 5.304999953508377,
+              "deltaPct": -32.975364609138396,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 21556.369905645795,
+              "cand": 25836.455241524298,
+              "deltaPct": 19.855315874671053,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 0.5723559600000001,
+              "cand": 0.5881316600000001,
+              "deltaPct": 2.756274259815508,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025047110000000008,
+              "cand": 0.025538779999999994,
+              "deltaPct": 1.962980958681403,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014078119999999993,
+              "cand": 0.01455069,
+              "deltaPct": 3.3567692277094348,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.017485599999999997,
+              "cand": 0.019856360000000003,
+              "deltaPct": 13.55835659056599,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.012003930000000001,
+              "cand": 0.01291892999999999,
+              "deltaPct": 7.62250363006106,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006656519999999996,
+              "cand": 0.00791238,
+              "deltaPct": 18.866614988011833,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.01538558999999999,
+              "cand": 0.018009679999999997,
+              "deltaPct": 17.055504533787836,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.015820580000000008,
+              "cand": 0.017218120000000003,
+              "deltaPct": 8.833683720824363,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.015063879999999997,
+              "cand": 0.015947280000000005,
+              "deltaPct": 5.864358983210224,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.014413900000000009,
+              "cand": 0.014852269999999999,
+              "deltaPct": 3.041300411408361,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.36902925,
+              "cand": 0.26453922,
+              "deltaPct": -28.314836832039727,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.015631420000000007,
+              "cand": 0.016209730000000006,
+              "deltaPct": 3.69966388210411,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.05402914,
+              "cand": 0.05642915,
+              "deltaPct": 4.442065892590542,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.019837180000000003,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.045502669999999995,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.032165429999999995,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "500": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.25200000166893,
+              "cand": 4.408999999761582,
+              "deltaPct": -16.051028210957114,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.704999929666519,
+              "cand": 5.299999952316284,
+              "deltaPct": -31.21349771971154,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 56072.670185051735,
+              "cand": 64077.918743325376,
+              "deltaPct": 14.276560277680051,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.2239166799999999,
+              "cand": 0.9456360800000003,
+              "deltaPct": -22.736890880513172,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.024518810000000002,
+              "cand": 0.02525712000000001,
+              "deltaPct": 3.011198341191964,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014382209999999998,
+              "cand": 0.01450735,
+              "deltaPct": 0.8701027171763086,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.017389639999999998,
+              "cand": 0.019719669999999998,
+              "deltaPct": 13.398954779972446,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.012358910000000008,
+              "cand": 0.0137756,
+              "deltaPct": 11.46290409105651,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006394799999999994,
+              "cand": 0.007786539999999997,
+              "deltaPct": 21.76362044160888,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.01636885,
+              "cand": 0.01835805000000001,
+              "deltaPct": 12.152350348375178,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.016216399999999992,
+              "cand": 0.017287159999999996,
+              "deltaPct": 6.602945166621472,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.015267219999999996,
+              "cand": 0.015975609999999994,
+              "deltaPct": 4.639940997771684,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.014611460000000007,
+              "cand": 0.015436490000000002,
+              "deltaPct": 5.64645832791518,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.9740414700000001,
+              "cand": 0.60482138,
+              "deltaPct": -37.905992852645184,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.016663070000000016,
+              "cand": 0.016943790000000004,
+              "deltaPct": 1.6846835547110317,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.06998057,
+              "cand": 0.06922475999999998,
+              "deltaPct": -1.0800283564424003,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020433080000000013,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04612177,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.03419861,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "1000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.286000000238419,
+              "cand": 4.541999994516373,
+              "deltaPct": -14.074914977080752,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.90500009059906,
+              "cand": 5.504999995231628,
+              "deltaPct": -30.360532167755533,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 110083.66358721333,
+              "cand": 126358.35229089287,
+              "deltaPct": 14.783927218034474,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.8688483499999995,
+              "cand": 1.15827118,
+              "deltaPct": -38.022195326870666,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025704550000000007,
+              "cand": 0.025754580000000006,
+              "deltaPct": 0.194634802009759,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014622289999999996,
+              "cand": 0.014279010000000003,
+              "deltaPct": -2.347648692509811,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.019007190000000004,
+              "cand": 0.02008724999999999,
+              "deltaPct": 5.6823759850876785,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.014458059999999993,
+              "cand": 0.01376065,
+              "deltaPct": -4.823676205521309,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.010566500000000001,
+              "cand": 0.008484869999999999,
+              "deltaPct": -19.700279184214285,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.017638879999999996,
+              "cand": 0.01933965,
+              "deltaPct": 9.642165488965311,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.016745620000000006,
+              "cand": 0.01839054,
+              "deltaPct": 9.822986548124188,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.016388870000000007,
+              "cand": 0.016010560000000004,
+              "deltaPct": -2.3083348638435908,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.019303920000000002,
+              "cand": 0.016666439999999998,
+              "deltaPct": -13.662924421568283,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 1.5980050199999996,
+              "cand": 0.78639937,
+              "deltaPct": -50.78867962504897,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.020269660000000002,
+              "cand": 0.01963715000000001,
+              "deltaPct": -3.120476613815882,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.0976393,
+              "cand": 0.09808015000000005,
+              "deltaPct": 0.4515087674738022,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020426309999999993,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04526091,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.03582112000000001,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "2000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.722999999523163,
+              "cand": 4.614000014066696,
+              "deltaPct": -19.377948375832045,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.010000002384185,
+              "cand": 5.710000044107437,
+              "deltaPct": -18.544935204487913,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 211104.0743139467,
+              "cand": 243961.94191577274,
+              "deltaPct": 15.564771882593295,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 2.3575688999999995,
+              "cand": 1.2322988399999997,
+              "deltaPct": -47.73010281905229,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025907100000000013,
+              "cand": 0.025231290000000007,
+              "deltaPct": -2.6085899232257006,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.016258989999999997,
+              "cand": 0.016590570000000006,
+              "deltaPct": 2.0393640687398693,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.020874639999999993,
+              "cand": 0.02056806,
+              "deltaPct": -1.4686720345835613,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.015649760000000002,
+              "cand": 0.014075549999999997,
+              "deltaPct": -10.059004099743412,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.011866500000000002,
+              "cand": 0.0066616399999999965,
+              "deltaPct": -43.86179581173897,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.017313860000000004,
+              "cand": 0.017888030000000003,
+              "deltaPct": 3.3162449043714037,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.016770539999999994,
+              "cand": 0.018623850000000008,
+              "deltaPct": 11.050985835876572,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.01778887000000001,
+              "cand": 0.015916480000000004,
+              "deltaPct": -10.525626416967485,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.02019718000000001,
+              "cand": 0.018867179999999997,
+              "deltaPct": -6.5850777187706955,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 2.02137093,
+              "cand": 0.7701237699999998,
+              "deltaPct": -61.90091790822381,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.024657140000000015,
+              "cand": 0.024672940000000008,
+              "deltaPct": 0.06407880232659949,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.15274179,
+              "cand": 0.15435255999999994,
+              "deltaPct": 1.0545705926321514,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020428829999999995,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.042669270000000016,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.04264095999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "5000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 8.799999998807907,
+              "cand": 5.774999994039535,
+              "deltaPct": -34.37500005884265,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 10.099999910593032,
+              "cand": 7,
+              "deltaPct": -30.693068693413608,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 394477.3175542406,
+              "cand": 523012.55230125523,
+              "deltaPct": 32.583682008368214,
+              "verdict": "higher (beyond noise)"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 5.18915302,
+              "cand": 2.0937606300000002,
+              "deltaPct": -59.651206624082164,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.026089650000000013,
+              "cand": 0.02659956,
+              "deltaPct": 1.9544532027067751,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.033878590000000014,
+              "cand": 0.03694862000000001,
+              "deltaPct": 9.061858831787253,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.03372188999999999,
+              "cand": 0.03016125999999999,
+              "deltaPct": -10.558809129618783,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.016742240000000005,
+              "cand": 0.017386380000000007,
+              "deltaPct": 3.847394374946251,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006851569999999998,
+              "cand": 0.007230839999999999,
+              "deltaPct": 5.535519596238543,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.02231469,
+              "cand": 0.02272131000000001,
+              "deltaPct": 1.8222077026389647,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.021931310000000006,
+              "cand": 0.020745530000000015,
+              "deltaPct": -5.406790565634201,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.02055629,
+              "cand": 0.01804472,
+              "deltaPct": -12.2180121023784,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.028405310000000007,
+              "cand": 0.025309570000000014,
+              "deltaPct": -10.898455253612763,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 4.615591250000001,
+              "cand": 1.3662711400000003,
+              "deltaPct": -70.39878390444561,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.03855935,
+              "cand": 0.03933192000000002,
+              "deltaPct": 2.0035866787174084,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.3157042699999999,
+              "cand": 0.3249382999999999,
+              "deltaPct": 2.924898671785468,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.03324603000000001,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04575593999999997,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.07152136999999997,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "10000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 15.236999998092651,
+              "cand": 8.00300000309944,
+              "deltaPct": -47.47653734920754,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 17,
+              "cand": 9.699999928474426,
+              "deltaPct": -42.941176891326904,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 521457.9965454111,
+              "cand": 846095.2703445067,
+              "deltaPct": 62.255689998000555,
+              "verdict": "higher (beyond noise)"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 10.356669949999999,
+              "cand": 3.790042100000002,
+              "deltaPct": -63.4048191330071,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.026531280000000004,
+              "cand": 0.02594872,
+              "deltaPct": -2.195747811639705,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.05565160999999999,
+              "cand": 0.0554292,
+              "deltaPct": -0.3996470182982889,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.03887935000000002,
+              "cand": 0.03833439,
+              "deltaPct": -1.4016695237960966,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.02549456000000001,
+              "cand": 0.02503626,
+              "deltaPct": -1.7976383981524235,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.007201609999999996,
+              "cand": 0.006801529999999996,
+              "deltaPct": -5.555424412041207,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.026442910000000014,
+              "cand": 0.026067130000000008,
+              "deltaPct": -1.4210992663061892,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.026091280000000005,
+              "cand": 0.027367090000000007,
+              "deltaPct": 4.889794598041958,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.021652969999999997,
+              "cand": 0.021388850000000015,
+              "deltaPct": -1.2197864773284326,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.037015179999999995,
+              "cand": 0.03635696000000001,
+              "deltaPct": -1.7782434125674582,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 9.413369589999999,
+              "cand": 2.66936075,
+              "deltaPct": -71.64287745765647,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.06408899999999998,
+              "cand": 0.06641646,
+              "deltaPct": 3.631606047839751,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.6179178399999996,
+              "cand": 0.5909674200000002,
+              "deltaPct": -4.361489223227376,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.04548505999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04656604,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.10864996000000002,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "candidate": "ab-sorted-culled",
+      "variant": "renderDisabled",
+      "kernels": "{\"forceKernel\":\"sorted-culled\"}",
+      "sizes": {
+        "200": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.330999985933304,
+              "cand": 4.364999997615814,
+              "deltaPct": -18.120427515783824,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.915000092983245,
+              "cand": 5.299999952316284,
+              "deltaPct": -33.03853581739303,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 21556.369905645795,
+              "cand": 26045.05795106259,
+              "deltaPct": 20.823023844293793,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 0.5723559600000001,
+              "cand": 0.58586393,
+              "deltaPct": 2.3600645304715484,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025047110000000008,
+              "cand": 0.02498540999999999,
+              "deltaPct": -0.24633580480949166,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014078119999999993,
+              "cand": 0.01434481,
+              "deltaPct": 1.8943580534901467,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.017485599999999997,
+              "cand": 0.019808100000000006,
+              "deltaPct": 13.282358054627858,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.012003930000000001,
+              "cand": 0.012864769999999994,
+              "deltaPct": 7.171318060001957,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006656519999999996,
+              "cand": 0.007858259999999997,
+              "deltaPct": 18.053577545023558,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.01538558999999999,
+              "cand": 0.018732960000000003,
+              "deltaPct": 21.756526724032128,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.015820580000000008,
+              "cand": 0.01856634,
+              "deltaPct": 17.355621601736416,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.015063879999999997,
+              "cand": 0.01597966,
+              "deltaPct": 6.079310244107119,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.014413900000000009,
+              "cand": 0.014534720000000001,
+              "deltaPct": 0.8382186639285127,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.36902925,
+              "cand": 0.2622117100000002,
+              "deltaPct": -28.945548354229313,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.015631420000000007,
+              "cand": 0.016034749999999997,
+              "deltaPct": 2.5802518261296146,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.05402914,
+              "cand": 0.05618162000000001,
+              "deltaPct": 3.983924230517097,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.01950965,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.045710070000000005,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.0320162,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "500": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.25200000166893,
+              "cand": 4.407999999523163,
+              "deltaPct": -16.07006858106566,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.704999929666519,
+              "cand": 5.799999958276748,
+              "deltaPct": -24.724204916017708,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 56072.670185051735,
+              "cand": 62829.85675169133,
+              "deltaPct": 12.050766521978433,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.2239166799999999,
+              "cand": 0.9516449200000001,
+              "deltaPct": -22.245939159845406,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.024518810000000002,
+              "cand": 0.025491249999999997,
+              "deltaPct": 3.9660978652715793,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014382209999999998,
+              "cand": 0.014385610000000007,
+              "deltaPct": 0.023640316752497,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.017389639999999998,
+              "cand": 0.01994307,
+              "deltaPct": 14.683627723173121,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.012358910000000008,
+              "cand": 0.01317316,
+              "deltaPct": 6.588364184220061,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006394799999999994,
+              "cand": 0.007914899999999999,
+              "deltaPct": 23.770876337023935,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.01636885,
+              "cand": 0.02026392,
+              "deltaPct": 23.79562400535163,
+              "verdict": "higher (beyond noise)"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.016216399999999992,
+              "cand": 0.01815804,
+              "deltaPct": 11.973310969142407,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.015267219999999996,
+              "cand": 0.01643225,
+              "deltaPct": 7.630924294010324,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.014611460000000007,
+              "cand": 0.01531387,
+              "deltaPct": 4.807254032108997,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 0.9740414700000001,
+              "cand": 0.6076138000000002,
+              "deltaPct": -37.61930896022321,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.016663070000000016,
+              "cand": 0.01712563,
+              "deltaPct": 2.7759590519633113,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.06998057,
+              "cand": 0.06967143999999999,
+              "deltaPct": -0.4417368992564915,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.02047879,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04583177,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.035300319999999996,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "1000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.286000000238419,
+              "cand": 4.381000006198883,
+              "deltaPct": -17.120696065053277,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.90500009059906,
+              "cand": 5.315000069141387,
+              "deltaPct": -32.764073267219864,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 110083.66358721333,
+              "cand": 126678.4899962253,
+              "deltaPct": 15.074740309550817,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 1.8688483499999995,
+              "cand": 0.9908370300000002,
+              "deltaPct": -46.981410770970236,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025704550000000007,
+              "cand": 0.025538710000000006,
+              "deltaPct": -0.6451776047431307,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.014622289999999996,
+              "cand": 0.0156397,
+              "deltaPct": 6.957938872775766,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.019007190000000004,
+              "cand": 0.020380559999999992,
+              "deltaPct": 7.225528865655512,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.014458059999999993,
+              "cand": 0.01348897,
+              "deltaPct": -6.702766484576728,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.010566500000000001,
+              "cand": 0.00725246,
+              "deltaPct": -31.363649268915925,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.017638879999999996,
+              "cand": 0.019181360000000005,
+              "deltaPct": 8.744772910751758,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.016745620000000006,
+              "cand": 0.01732056,
+              "deltaPct": 3.433375413988806,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.016388870000000007,
+              "cand": 0.01654224,
+              "deltaPct": 0.9358180277224293,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.019303920000000002,
+              "cand": 0.016704699999999996,
+              "deltaPct": -13.464726335376474,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 1.5980050199999996,
+              "cand": 0.61500871,
+              "deltaPct": -61.513968835967724,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.020269660000000002,
+              "cand": 0.020038900000000002,
+              "deltaPct": -1.1384502749429442,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.0976393,
+              "cand": 0.09648350000000004,
+              "deltaPct": -1.1837446601931363,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.020506379999999994,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04455096999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.036245320000000004,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "2000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 5.722999999523163,
+              "cand": 4.681999996900559,
+              "deltaPct": -18.189760662403273,
+              "verdict": "within noise"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 7.010000002384185,
+              "cand": 5.705000042915344,
+              "deltaPct": -18.616261897646147,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 211104.0743139467,
+              "cand": 236798.4844830148,
+              "deltaPct": 12.171442096781249,
+              "verdict": "within noise"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 2.3575688999999995,
+              "cand": 1.0503901800000002,
+              "deltaPct": -55.446045288432494,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.025907100000000013,
+              "cand": 0.025307930000000013,
+              "deltaPct": -2.3127636825426205,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.016258989999999997,
+              "cand": 0.016362170000000006,
+              "deltaPct": 0.6346027643784041,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.020874639999999993,
+              "cand": 0.0218222,
+              "deltaPct": 4.539287863167975,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.015649760000000002,
+              "cand": 0.015386450000000003,
+              "deltaPct": -1.6825178149696813,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.011866500000000002,
+              "cand": 0.007851479999999997,
+              "deltaPct": -33.83491341170525,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.017313860000000004,
+              "cand": 0.01995546,
+              "deltaPct": 15.257140810887906,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.016770539999999994,
+              "cand": 0.019308930000000012,
+              "deltaPct": 15.136006353999452,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.01778887000000001,
+              "cand": 0.017059760000000007,
+              "deltaPct": -4.098686425838185,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.02019718000000001,
+              "cand": 0.01926889,
+              "deltaPct": -4.596136688389212,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 2.02137093,
+              "cand": 0.59508404,
+              "deltaPct": -70.56037409225034,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.024657140000000015,
+              "cand": 0.025119590000000015,
+              "deltaPct": 1.8755216541740014,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.15274179,
+              "cand": 0.15284510000000007,
+              "deltaPct": 0.06763702324038406,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.021518040000000006,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04560423999999999,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.042850199999999984,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "5000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 8.799999998807907,
+              "cand": 5.06600000500679,
+              "deltaPct": -42.43181811712436,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 10.099999910593032,
+              "cand": 6.105000019073486,
+              "deltaPct": -39.55445472162361,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 394477.3175542406,
+              "cand": 563316.8093584605,
+              "deltaPct": 42.80081117236975,
+              "verdict": "higher (beyond noise)"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 5.18915302,
+              "cand": 1.55823178,
+              "deltaPct": -69.97136577020811,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.026089650000000013,
+              "cand": 0.026781270000000003,
+              "deltaPct": 2.6509362908279326,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.033878590000000014,
+              "cand": 0.036346989999999996,
+              "deltaPct": 7.286017511354459,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.03372188999999999,
+              "cand": 0.03095037000000001,
+              "deltaPct": -8.218756422015442,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.016742240000000005,
+              "cand": 0.01685142000000001,
+              "deltaPct": 0.6521230134080256,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.006851569999999998,
+              "cand": 0.007181499999999997,
+              "deltaPct": 4.815392676423056,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.02231469,
+              "cand": 0.022290479999999998,
+              "deltaPct": -0.10849355290171483,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.021931310000000006,
+              "cand": 0.021605459999999993,
+              "deltaPct": -1.485775359520306,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.02055629,
+              "cand": 0.018269720000000003,
+              "deltaPct": -11.123456615955497,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.028405310000000007,
+              "cand": 0.025857119999999997,
+              "deltaPct": -8.970822708852706,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 4.615591250000001,
+              "cand": 0.8355503400000001,
+              "deltaPct": -81.89721977655626,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.03855935,
+              "cand": 0.039978530000000005,
+              "deltaPct": 3.680508099851284,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.3157042699999999,
+              "cand": 0.32120415,
+              "deltaPct": 1.7420987052218602,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.033139499999999995,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04585267,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.07150227,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        },
+        "10000": {
+          "roundsBaseline": 5,
+          "roundsCandidate": 5,
+          "rows": [
+            {
+              "name": "step ms (mean)",
+              "base": 15.236999998092651,
+              "cand": 6.9609999907016755,
+              "deltaPct": -54.31515395699255,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "step ms (p95)",
+              "base": 17,
+              "cand": 8.205000042915344,
+              "deltaPct": -51.73529386520386,
+              "verdict": "within noise"
+            },
+            {
+              "name": "particle-steps/s",
+              "base": 521457.9965454111,
+              "cand": 927299.7032845961,
+              "deltaPct": 77.82826410330871,
+              "verdict": "higher (beyond noise)"
+            },
+            {
+              "name": "GPU sum ms",
+              "base": 10.356669949999999,
+              "cand": 2.75400035,
+              "deltaPct": -73.40843762236528,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass gridClear",
+              "base": 0.026531280000000004,
+              "cand": 0.026832039999999998,
+              "deltaPct": 1.1336053141800684,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass gridBuild",
+              "base": 0.05565160999999999,
+              "cand": 0.058929120000000015,
+              "deltaPct": 5.889335456781979,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeProcess",
+              "base": 0.03887935000000002,
+              "cand": 0.0397693,
+              "deltaPct": 2.2890043172017513,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass chargeFinalize",
+              "base": 0.02549456000000001,
+              "cand": 0.028360350000000013,
+              "deltaPct": 11.240790192103738,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass pressure",
+              "base": 0.007201609999999996,
+              "cand": 0.00743074,
+              "deltaPct": 3.181649658895771,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationSelect",
+              "base": 0.026442910000000014,
+              "cand": 0.027198009999999995,
+              "deltaPct": 2.8555858640368266,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass communicationTransmit",
+              "base": 0.026091280000000005,
+              "cand": 0.024769640000000016,
+              "deltaPct": -5.065447153225094,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass localSuccess",
+              "base": 0.021652969999999997,
+              "cand": 0.02228458000000001,
+              "deltaPct": 2.916967048862173,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass healthUpdate",
+              "base": 0.037015179999999995,
+              "cand": 0.03748693,
+              "deltaPct": 1.2744771199275728,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass force",
+              "base": 9.413369589999999,
+              "cand": 1.6086382099999996,
+              "deltaPct": -82.9111329941949,
+              "verdict": "lower (beyond noise)"
+            },
+            {
+              "name": "pass mechanics",
+              "base": 0.06408899999999998,
+              "cand": 0.06639814999999998,
+              "deltaPct": 3.6030364025027644,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass deathCompaction",
+              "base": 0.6179178399999996,
+              "cand": 0.5962849000000002,
+              "deltaPct": -3.500941160721204,
+              "verdict": "within noise"
+            },
+            {
+              "name": "pass sortCount",
+              "base": null,
+              "cand": 0.04436192000000001,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScan",
+              "base": null,
+              "cand": 0.04609259000000001,
+              "deltaPct": null,
+              "verdict": "n/a"
+            },
+            {
+              "name": "pass sortScatter",
+              "base": null,
+              "cand": 0.11100407000000002,
+              "deltaPct": null,
+              "verdict": "n/a"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

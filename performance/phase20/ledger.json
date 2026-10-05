@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "phase": 20,
+  "baseline": "Phase 19 final state: merge incremental, metrics blocking, no quiet fast path, pipeline depth 1 (force sorted-culled, deathCompaction blocked)",
+  "device": "not yet measured",
+  "entries": [
+    {"candidate": "P20-5 deathCompaction=blocked as default", "decision": "implemented (default)", "evidence": "Phase 19: pass x0.89..x0.18, 5/5 paired wins, self-test passed", "correctness": "orchestration golden 19/19 unchanged"},
+    {"candidate": "P20-3 await-latency probe", "decision": "implemented", "evidence": "pending: run-phase20-ab.ps1 writes performance/phase20/await-latency.json", "purpose": "decides whether pipelining can hide the ~3 ms mapAsync cost"},
+    {"candidate": "P20-2a quietFastPath", "targetStage": "encode.snapshotMs / encode CPU", "decision": "pending", "expectedMechanism": "lazy snapshot, no previousIncoming* copies", "nodeMicroBenchmark": "0.33 ms + 1.6 ms at N=10000 (indicative)", "correctness": "digest-identical on/off in 9 scenarios; takeSnapshot 0 calls in steady scenario"},
+    {"candidate": "P20-2b topologyMerge=epoch", "targetStage": "worker.mergeTopologyMs", "decision": "pending", "phase19Evidence": "incremental merge still 1.8 ms at N=10000 on quiet steps", "correctness": "differential vs rebuild, 4 seeds x 150 steps; skips only quiet steps"},
+    {"candidate": "P20-1 metricsMode=lagged", "targetStage": "worker.metricsMs", "decision": "pending", "phase19Evidence": "3.4 ms (N=200) .. 3.5 ms (N=10000) per frame, 22-47% of the cycle", "correctness": "each lagged sample equals a blocking read at its tagged timestep (4 scenarios)", "behaviourChange": "metrics one frame stale in the UI"},
+    {"candidate": "P20-4 pipelineDepth=2", "targetStage": "finishNormalSync await (~3 ms per step)", "decision": "pending (opt-in)", "risk": "high: real-GPU behaviour, Dawn cost of halt copies/pass, presentation without awaiting completion not verified", "correctness": "software-device equivalence on 9 scenarios + 15 tests; on-device guard/halt-update self-test pending"}
+  ],
+  "rejected": [],
+  "notRun": ["pnpm typecheck/lint/test/build", "WGSL compilation of guards and haltUpdate", "any hardware measurement", "visual check of pipelined presentation"]
+}

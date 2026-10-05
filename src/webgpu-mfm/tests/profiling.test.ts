@@ -195,6 +195,31 @@ describe('GpuPassTimestampProfiler', () => {
     expect(step.spanNs).toBe(2_300_000 + 5 * 10_000);
   });
 
+  it("Phase 19: a 'render' pass is recorded in the same step but excluded from sumNs/spanNs; renderNs/renderMs carry it", async () => {
+    const device = new MockDevice();
+    device.gapNs = 10_000;
+    const profiler = new GpuPassTimestampProfiler(device as never);
+    // compute passes, then a render-labelled pass, as the worker records them (timestampWritesFor('render') before endStep)
+    runStep(device, profiler, [...STEP, { label: 'render', ns: 4_000_000 }]);
+    await profiler.collect();
+    runStep(device, profiler, STEP); // a step without a render pass in the same window
+    await profiler.collect();
+    const [withRender, without] = profiler.getSteps();
+    expect(withRender.passes.length).toBe(7);
+    expect(withRender.renderNs).toBe(4_000_000);
+    expect(withRender.sumNs).toBe(2_300_000); // unchanged Phase 14-18 definition: compute only
+    expect(withRender.spanNs).toBe(2_300_000 + 5 * 10_000);
+    expect(without.renderNs).toBe(0);
+    const aggregate = aggregateGpuSteps(profiler.getSteps());
+    expect(aggregate.renderMs?.count).toBe(2);
+    expect(aggregate.renderMs?.max).toBeCloseTo(4, 9);
+    expect(aggregate.sumMs.mean).toBeCloseTo(2.3, 9);
+    expect(aggregate.labels.find((label) => label.label === 'render')?.perStepMs.max).toBeCloseTo(4, 9);
+    // a window with no render pass at all reports null, not zeros
+    const none = aggregateGpuSteps([without]);
+    expect(none.renderMs).toBe(null);
+  });
+
   it('aggregates by label, rank and group', async () => {
     const device = new MockDevice();
     const profiler = new GpuPassTimestampProfiler(device as never);

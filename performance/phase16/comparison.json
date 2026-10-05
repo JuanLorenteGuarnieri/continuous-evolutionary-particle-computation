@@ -1,0 +1,963 @@
+{
+ "schema": "cepc-phase16-comparison/1",
+ "timed": false,
+ "note": "Derived from the JSON files in this directory. Counts are taken at the device boundary of a software GPUDevice (no timing).",
+ "steps": 496,
+ "totals": {
+  "phase15": {
+   "bindGroupsCreated": 6438,
+   "writeBufferCalls": 2408,
+   "cpuToGpuBytes": 512304,
+   "computePasses": 6438,
+   "dispatches": 6438,
+   "commandEncoders": 888,
+   "clearBufferCalls": 2382,
+   "copyBufferCalls": 2668,
+   "submits": 888
+  },
+  "phase16": {
+   "bindGroupsCreated": 668,
+   "writeBufferCalls": 1912,
+   "cpuToGpuBytes": 456752,
+   "computePasses": 6438,
+   "dispatches": 6438,
+   "commandEncoders": 888,
+   "clearBufferCalls": 2382,
+   "copyBufferCalls": 2668,
+   "submits": 888
+  },
+  "phase16CacheOff": {
+   "bindGroupsCreated": 6350,
+   "writeBufferCalls": 1912,
+   "cpuToGpuBytes": 456752,
+   "computePasses": 6438,
+   "dispatches": 6438,
+   "commandEncoders": 888,
+   "clearBufferCalls": 2382,
+   "copyBufferCalls": 2668,
+   "submits": 888
+  },
+  "phase16Packed": {
+   "bindGroupsCreated": 668,
+   "writeBufferCalls": 1868,
+   "cpuToGpuBytes": 463088,
+   "computePasses": 6438,
+   "dispatches": 6438,
+   "commandEncoders": 888,
+   "clearBufferCalls": 2382,
+   "copyBufferCalls": 2668,
+   "submits": 888
+  }
+ },
+ "perScenario": {
+  "headless/steady-no-repro": {
+   "phase15": {
+    "bindGroupsCreated": 288,
+    "writeBufferCalls": 48,
+    "cpuToGpuBytes": 5376,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 24,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 48,
+    "submits": 24
+   },
+   "phase16": {
+    "bindGroupsCreated": 24,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 24,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 48,
+    "submits": 24
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 288,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 24,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 48,
+    "submits": 24
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 24,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 24,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 48,
+    "submits": 24
+   }
+  },
+  "headless/steady-repro-enabled": {
+   "phase15": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 48,
+    "cpuToGpuBytes": 5376,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 24,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 72,
+    "submits": 24
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 24,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 72,
+    "submits": 24
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 24,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 72,
+    "submits": 24
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 24,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 72,
+    "submits": 24
+   }
+  },
+  "headless/single-death": {
+   "phase15": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 64,
+    "cpuToGpuBytes": 8296,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 74,
+    "submits": 26
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5608,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 74,
+    "submits": 26
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5608,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 74,
+    "submits": 26
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5608,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 74,
+    "submits": 26
+   }
+  },
+  "headless/single-birth": {
+   "phase15": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 69,
+    "cpuToGpuBytes": 5468,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 79,
+    "submits": 26
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 2780,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 79,
+    "submits": 26
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 2780,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 79,
+    "submits": 26
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 2780,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 79,
+    "submits": 26
+   }
+  },
+  "headless/multi-death": {
+   "phase15": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 64,
+    "cpuToGpuBytes": 8408,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 81,
+    "submits": 26
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5720,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 81,
+    "submits": 26
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5720,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 81,
+    "submits": 26
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5720,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 26,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 81,
+    "submits": 26
+   }
+  },
+  "headless/death-and-birth": {
+   "phase15": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 69,
+    "cpuToGpuBytes": 8380,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 87,
+    "submits": 26
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 5692,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 87,
+    "submits": 26
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 5692,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 87,
+    "submits": 26
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 5692,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 26,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 87,
+    "submits": 26
+   }
+  },
+  "headless/shape-change-fallback": {
+   "phase15": {
+    "bindGroupsCreated": 349,
+    "writeBufferCalls": 112,
+    "cpuToGpuBytes": 17768,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 28,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 75,
+    "submits": 28
+   },
+   "phase16": {
+    "bindGroupsCreated": 76,
+    "writeBufferCalls": 88,
+    "cpuToGpuBytes": 15080,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 28,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 75,
+    "submits": 28
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 305,
+    "writeBufferCalls": 88,
+    "cpuToGpuBytes": 15080,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 28,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 75,
+    "submits": 28
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 76,
+    "writeBufferCalls": 66,
+    "cpuToGpuBytes": 18248,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 28,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 75,
+    "submits": 28
+   }
+  },
+  "headless/churn": {
+   "phase15": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 365,
+    "cpuToGpuBytes": 31900,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   },
+   "phase16": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 27420,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 27420,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 27420,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   }
+  },
+  "headless/churn-large": {
+   "phase15": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 365,
+    "cpuToGpuBytes": 165180,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   },
+   "phase16": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 160700,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 160700,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 160700,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 70,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 285,
+    "submits": 70
+   }
+  },
+  "interactive/steady-no-repro": {
+   "phase15": {
+    "bindGroupsCreated": 288,
+    "writeBufferCalls": 48,
+    "cpuToGpuBytes": 5376,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 48,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 96,
+    "submits": 48
+   },
+   "phase16": {
+    "bindGroupsCreated": 24,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 48,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 96,
+    "submits": 48
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 288,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 48,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 96,
+    "submits": 48
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 24,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 288,
+    "dispatches": 288,
+    "commandEncoders": 48,
+    "clearBufferCalls": 96,
+    "copyBufferCalls": 96,
+    "submits": 48
+   }
+  },
+  "interactive/steady-repro-enabled": {
+   "phase15": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 48,
+    "cpuToGpuBytes": 5376,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 48,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 120,
+    "submits": 48
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 48,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 120,
+    "submits": 48
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 48,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 120,
+    "submits": 48
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 24,
+    "cpuToGpuBytes": 2688,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 48,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 120,
+    "submits": 48
+   }
+  },
+  "interactive/single-death": {
+   "phase15": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 64,
+    "cpuToGpuBytes": 8296,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 122,
+    "submits": 50
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5608,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 122,
+    "submits": 50
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5608,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 122,
+    "submits": 50
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5608,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 122,
+    "submits": 50
+   }
+  },
+  "interactive/single-birth": {
+   "phase15": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 69,
+    "cpuToGpuBytes": 5468,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 127,
+    "submits": 50
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 2780,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 127,
+    "submits": 50
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 2780,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 127,
+    "submits": 50
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 2780,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 127,
+    "submits": 50
+   }
+  },
+  "interactive/multi-death": {
+   "phase15": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 64,
+    "cpuToGpuBytes": 8408,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 129,
+    "submits": 50
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5720,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 129,
+    "submits": 50
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 303,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5720,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 129,
+    "submits": 50
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 40,
+    "cpuToGpuBytes": 5720,
+    "computePasses": 303,
+    "dispatches": 303,
+    "commandEncoders": 50,
+    "clearBufferCalls": 111,
+    "copyBufferCalls": 129,
+    "submits": 50
+   }
+  },
+  "interactive/death-and-birth": {
+   "phase15": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 69,
+    "cpuToGpuBytes": 8380,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 135,
+    "submits": 50
+   },
+   "phase16": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 5692,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 135,
+    "submits": 50
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 312,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 5692,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 135,
+    "submits": 50
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 26,
+    "writeBufferCalls": 45,
+    "cpuToGpuBytes": 5692,
+    "computePasses": 312,
+    "dispatches": 312,
+    "commandEncoders": 50,
+    "clearBufferCalls": 120,
+    "copyBufferCalls": 135,
+    "submits": 50
+   }
+  },
+  "interactive/shape-change-fallback": {
+   "phase15": {
+    "bindGroupsCreated": 349,
+    "writeBufferCalls": 112,
+    "cpuToGpuBytes": 17768,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 52,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 123,
+    "submits": 52
+   },
+   "phase16": {
+    "bindGroupsCreated": 76,
+    "writeBufferCalls": 88,
+    "cpuToGpuBytes": 15080,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 52,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 123,
+    "submits": 52
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 305,
+    "writeBufferCalls": 88,
+    "cpuToGpuBytes": 15080,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 52,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 123,
+    "submits": 52
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 76,
+    "writeBufferCalls": 66,
+    "cpuToGpuBytes": 18248,
+    "computePasses": 349,
+    "dispatches": 349,
+    "commandEncoders": 52,
+    "clearBufferCalls": 113,
+    "copyBufferCalls": 123,
+    "submits": 52
+   }
+  },
+  "interactive/churn": {
+   "phase15": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 365,
+    "cpuToGpuBytes": 31900,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   },
+   "phase16": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 27420,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 27420,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 27420,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   }
+  },
+  "interactive/churn-large": {
+   "phase15": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 365,
+    "cpuToGpuBytes": 165180,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   },
+   "phase16": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 160700,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   },
+   "phase16CacheOff": {
+    "bindGroupsCreated": 520,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 160700,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   },
+   "phase16Packed": {
+    "bindGroupsCreated": 52,
+    "writeBufferCalls": 325,
+    "cpuToGpuBytes": 160700,
+    "computePasses": 520,
+    "dispatches": 520,
+    "commandEncoders": 110,
+    "clearBufferCalls": 200,
+    "copyBufferCalls": 365,
+    "submits": 110
+   }
+  }
+ },
+ "cpuOrchestrationNodeNoopGpu": {
+  "scope": "JS-only host cost under a no-op software GPU, 1 vCPU sandbox; median of 3 interleaved rounds; NOT Dawn/IPC/GPU time",
+  "phase15": {
+   "1000": {
+    "stepMeanMs": 0.0797,
+    "stepP50Ms": 0.0655,
+    "stepP95Ms": 0.122,
+    "encodePassesMs": 0.009,
+    "encodeWriteParamsMs": 0.0042,
+    "roundStepMeansMs": [
+     0.0818,
+     0.0792,
+     0.0797
+    ]
+   },
+   "10000": {
+    "stepMeanMs": 0.6226,
+    "stepP50Ms": 0.5901,
+    "stepP95Ms": 0.8131,
+    "encodePassesMs": 0.0123,
+    "encodeWriteParamsMs": 0.0045,
+    "roundStepMeansMs": [
+     0.6226,
+     0.612,
+     0.6943
+    ]
+   }
+  },
+  "phase16": {
+   "1000": {
+    "stepMeanMs": 0.0731,
+    "stepP50Ms": 0.0586,
+    "stepP95Ms": 0.0891,
+    "encodePassesMs": 0.0034,
+    "encodeWriteParamsMs": 0.0022,
+    "roundStepMeansMs": [
+     0.0732,
+     0.0731,
+     0.0698
+    ]
+   },
+   "10000": {
+    "stepMeanMs": 0.6359,
+    "stepP50Ms": 0.5934,
+    "stepP95Ms": 0.8082,
+    "encodePassesMs": 0.004,
+    "encodeWriteParamsMs": 0.0065,
+    "roundStepMeansMs": [
+     0.6359,
+     0.6199,
+     0.6872
+    ]
+   }
+  },
+  "phase16CacheOff": {
+   "1000": {
+    "stepMeanMs": 0.0797,
+    "stepP50Ms": 0.0652,
+    "stepP95Ms": 0.1107,
+    "encodePassesMs": 0.0098,
+    "encodeWriteParamsMs": 0.0026,
+    "roundStepMeansMs": [
+     0.0795,
+     0.0797,
+     0.081
+    ]
+   },
+   "10000": {
+    "stepMeanMs": 0.6369,
+    "stepP50Ms": 0.5942,
+    "stepP95Ms": 0.8275,
+    "encodePassesMs": 0.0135,
+    "encodeWriteParamsMs": 0.0069,
+    "roundStepMeansMs": [
+     0.6442,
+     0.6334,
+     0.6369
+    ]
+   }
+  }
+ }
+}

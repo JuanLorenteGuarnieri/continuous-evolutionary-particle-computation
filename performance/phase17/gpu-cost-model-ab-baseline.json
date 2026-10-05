@@ -1,0 +1,1246 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase17-gpu-cost-model",
+  "tag": "ab-baseline",
+  "adapters": [
+    {
+      "vendor": "intel",
+      "architecture": "gen-9",
+      "device": "0x1916",
+      "description": "Intel(R) HD Graphics 520"
+    }
+  ],
+  "rejected": [],
+  "sizes": {
+    "200": {
+      "rounds": 5,
+      "stepMs": {
+        "median": 5.198999998569488,
+        "range": [
+          4.61,
+          5.7110000002384185
+        ]
+      },
+      "stepP95Ms": 6.6050000250339505,
+      "stepP99Ms": 7.003000000715257,
+      "stepsPerSecond": 118.66619201197065,
+      "particleStepsPerSecond": 23733.23840239413,
+      "gpuSumMs": {
+        "median": 0.7221595700000001,
+        "range": [
+          0.7123498500000001,
+          0.7350527100000004
+        ]
+      },
+      "gpuSpanMs": 0.7519432200000001,
+      "gpuGapMs": 0.02946868999999952,
+      "gpuShareOfStep": 0.14011679574298336,
+      "zeroDurationFraction": 0,
+      "labels": {
+        "gridClear": {
+          "meanMs": 0.024697980000000005,
+          "rangeMs": [
+            0.024059690000000026,
+            0.02536709000000001
+          ],
+          "p50Ms": 0.0239165,
+          "p95Ms": 0.0270083,
+          "passesPerStep": 1,
+          "sharePct": 3.3954310125669336,
+          "workgroupsPerDispatch": "ceil(cells/128)"
+        },
+        "gridBuild": {
+          "meanMs": 0.011049849999999993,
+          "rangeMs": [
+            0.010719919999999996,
+            0.011663969999999997
+          ],
+          "p50Ms": 0.010583,
+          "p95Ms": 0.0118381,
+          "passesPerStep": 1,
+          "sharePct": 1.5443156067980721,
+          "workgroupsPerDispatch": "2"
+        },
+        "chargeProcess": {
+          "meanMs": 0.016501350000000005,
+          "rangeMs": [
+            0.016248119999999994,
+            0.01766723
+          ],
+          "p50Ms": 0.0159995,
+          "p95Ms": 0.01767115,
+          "passesPerStep": 1,
+          "sharePct": 2.285454001017456,
+          "workgroupsPerDispatch": "2"
+        },
+        "chargeFinalize": {
+          "meanMs": 0.011631579999999996,
+          "rangeMs": [
+            0.01147647,
+            0.012194809999999995
+          ],
+          "p50Ms": 0.011375,
+          "p95Ms": 0.0126827,
+          "passesPerStep": 1,
+          "sharePct": 1.6328465570674289,
+          "workgroupsPerDispatch": "2"
+        },
+        "pressure": {
+          "meanMs": 0.006689829999999999,
+          "rangeMs": [
+            0.00628990999999999,
+            0.006898249999999992
+          ],
+          "p50Ms": 0.006167,
+          "p95Ms": 0.007183599999999999,
+          "passesPerStep": 1,
+          "sharePct": 0.9348977276251169,
+          "workgroupsPerDispatch": "1"
+        },
+        "communicationSelect": {
+          "meanMs": 0.014942210000000004,
+          "rangeMs": [
+            0.01456063000000001,
+            0.01546644
+          ],
+          "p50Ms": 0.01375,
+          "p95Ms": 0.016608299999999993,
+          "passesPerStep": 1,
+          "sharePct": 2.0691008775248942,
+          "workgroupsPerDispatch": "2"
+        },
+        "communicationTransmit": {
+          "meanMs": 0.015983090000000012,
+          "rangeMs": [
+            0.015237240000000006,
+            0.016248130000000003
+          ],
+          "p50Ms": 0.015666,
+          "p95Ms": 0.016783299999999998,
+          "passesPerStep": 1,
+          "sharePct": 2.2107236646545583,
+          "workgroupsPerDispatch": "2"
+        },
+        "localSuccess": {
+          "meanMs": 0.014718900000000005,
+          "rangeMs": [
+            0.014534699999999994,
+            0.015594709999999989
+          ],
+          "p50Ms": 0.014166,
+          "p95Ms": 0.015312499999999996,
+          "passesPerStep": 1,
+          "sharePct": 2.062323599077102,
+          "workgroupsPerDispatch": "2"
+        },
+        "healthUpdate": {
+          "meanMs": 0.01410562000000001,
+          "rangeMs": [
+            0.014016440000000003,
+            0.01457811999999999
+          ],
+          "p50Ms": 0.013583,
+          "p95Ms": 0.01910385,
+          "passesPerStep": 1,
+          "sharePct": 1.9712477125343113,
+          "workgroupsPerDispatch": "2"
+        },
+        "force": {
+          "meanMs": 0.36743343999999994,
+          "rangeMs": [
+            0.3624518200000002,
+            0.3811641100000001
+          ],
+          "p50Ms": 0.3613275,
+          "p95Ms": 0.3893812,
+          "passesPerStep": 1,
+          "sharePct": 50.88115341078547,
+          "workgroupsPerDispatch": "2"
+        },
+        "mechanics": {
+          "meanMs": 0.014981439999999997,
+          "rangeMs": [
+            0.01477474999999999,
+            0.015083990000000005
+          ],
+          "p50Ms": 0.0145,
+          "p95Ms": 0.016232649999999994,
+          "passesPerStep": 1,
+          "sharePct": 2.0682596973507277,
+          "workgroupsPerDispatch": "2"
+        },
+        "deathCompaction": {
+          "meanMs": 0.20766759,
+          "rangeMs": [
+            0.2059717999999999,
+            0.20959412
+          ],
+          "p50Ms": 0.2051635,
+          "p95Ms": 0.2154002,
+          "passesPerStep": 1,
+          "sharePct": 28.75646860153082,
+          "workgroupsPerDispatch": "2"
+        }
+      },
+      "groups": {
+        "grid": {
+          "meanMs": 0.035653719999999986,
+          "sharePct": 4.928693394123685
+        },
+        "charge": {
+          "meanMs": 0.02797782000000001,
+          "sharePct": 3.9137651253804577
+        },
+        "pressure": {
+          "meanMs": 0.006689829999999999,
+          "sharePct": 0.9348977276251169
+        },
+        "communication": {
+          "meanMs": 0.030808719999999998,
+          "sharePct": 4.251387523007398
+        },
+        "localSuccessAndHealth": {
+          "meanMs": 0.028862949999999988,
+          "sharePct": 4.033571311611411
+        },
+        "force": {
+          "meanMs": 0.36743343999999994,
+          "sharePct": 50.88115341078547
+        },
+        "mechanics": {
+          "meanMs": 0.014981439999999997,
+          "sharePct": 2.0682596973507277
+        },
+        "compaction": {
+          "meanMs": 0.20766759,
+          "sharePct": 28.75646860153082
+        }
+      }
+    },
+    "500": {
+      "rounds": 5,
+      "stepMs": {
+        "median": 7.431999992132187,
+        "range": [
+          5.998999997377395,
+          7.966000001430512
+        ]
+      },
+      "stepP95Ms": 9.325000065565108,
+      "stepP99Ms": 13.45999995350846,
+      "stepsPerSecond": 90.62075215224287,
+      "particleStepsPerSecond": 45310.376076121436,
+      "gpuSumMs": {
+        "median": 1.5840793999999996,
+        "range": [
+          1.5672697599999998,
+          1.5904217000000005
+        ]
+      },
+      "gpuSpanMs": 1.6137814699999995,
+      "gpuGapMs": 0.02980442999999955,
+      "gpuShareOfStep": 0.21088129193476512,
+      "zeroDurationFraction": 0,
+      "labels": {
+        "gridClear": {
+          "meanMs": 0.02453805000000001,
+          "rangeMs": [
+            0.02400541000000002,
+            0.025753770000000023
+          ],
+          "p50Ms": 0.024,
+          "p95Ms": 0.025399049999999992,
+          "passesPerStep": 1,
+          "sharePct": 1.5490469124235444,
+          "workgroupsPerDispatch": "ceil(cells/128)"
+        },
+        "gridBuild": {
+          "meanMs": 0.011153979999999997,
+          "rangeMs": [
+            0.010790689999999999,
+            0.012511479999999995
+          ],
+          "p50Ms": 0.010833,
+          "p95Ms": 0.0118381,
+          "passesPerStep": 1,
+          "sharePct": 0.703490297622151,
+          "workgroupsPerDispatch": "4"
+        },
+        "chargeProcess": {
+          "meanMs": 0.017135599999999997,
+          "rangeMs": [
+            0.016504689999999985,
+            0.02064215000000001
+          ],
+          "p50Ms": 0.016417,
+          "p95Ms": 0.01766605,
+          "passesPerStep": 1,
+          "sharePct": 1.0906768016940913,
+          "workgroupsPerDispatch": "4"
+        },
+        "chargeFinalize": {
+          "meanMs": 0.012326439999999994,
+          "rangeMs": [
+            0.012128159999999997,
+            0.012522310000000004
+          ],
+          "p50Ms": 0.011833,
+          "p95Ms": 0.012691999999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.7763035426390364,
+          "workgroupsPerDispatch": "4"
+        },
+        "pressure": {
+          "meanMs": 0.0064132099999999895,
+          "rangeMs": [
+            0.006236579999999989,
+            0.006806509999999995
+          ],
+          "p50Ms": 0.00625,
+          "p95Ms": 0.006866349999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.40384944319223026,
+          "workgroupsPerDispatch": "1"
+        },
+        "communicationSelect": {
+          "meanMs": 0.016313050000000003,
+          "rangeMs": [
+            0.015868060000000003,
+            0.017055539999999994
+          ],
+          "p50Ms": 0.01675,
+          "p95Ms": 0.01759965,
+          "passesPerStep": 1,
+          "sharePct": 1.0357546871828882,
+          "workgroupsPerDispatch": "4"
+        },
+        "communicationTransmit": {
+          "meanMs": 0.015685559999999998,
+          "rangeMs": [
+            0.015124749999999998,
+            0.01672316
+          ],
+          "p50Ms": 0.0161245,
+          "p95Ms": 0.016833,
+          "passesPerStep": 1,
+          "sharePct": 0.9922838225221445,
+          "workgroupsPerDispatch": "4"
+        },
+        "localSuccess": {
+          "meanMs": 0.01506228000000001,
+          "rangeMs": [
+            0.014931440000000004,
+            0.015630599999999998
+          ],
+          "p50Ms": 0.014666,
+          "p95Ms": 0.01584965,
+          "passesPerStep": 1,
+          "sharePct": 0.9587104844079514,
+          "workgroupsPerDispatch": "4"
+        },
+        "healthUpdate": {
+          "meanMs": 0.014494759999999987,
+          "rangeMs": [
+            0.01416641999999999,
+            0.014953109999999997
+          ],
+          "p50Ms": 0.014083,
+          "p95Ms": 0.015424349999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.9225879734659677,
+          "workgroupsPerDispatch": "4"
+        },
+        "force": {
+          "meanMs": 0.94917435,
+          "rangeMs": [
+            0.9390286200000004,
+            0.9568858299999999
+          ],
+          "p50Ms": 0.9406105,
+          "p95Ms": 0.9522558000000001,
+          "passesPerStep": 1,
+          "sharePct": 59.919619559474114,
+          "workgroupsPerDispatch": "4"
+        },
+        "mechanics": {
+          "meanMs": 0.016017139999999996,
+          "rangeMs": [
+            0.015555549999999998,
+            0.01640304
+          ],
+          "p50Ms": 0.0155,
+          "p95Ms": 0.017754149999999996,
+          "passesPerStep": 1,
+          "sharePct": 1.019487092806,
+          "workgroupsPerDispatch": "4"
+        },
+        "deathCompaction": {
+          "meanMs": 0.4811433800000001,
+          "rangeMs": [
+            0.47996251000000006,
+            0.48337080000000027
+          ],
+          "p50Ms": 0.47945099999999996,
+          "p95Ms": 0.4891635,
+          "passesPerStep": 1,
+          "sharePct": 30.392618511178522,
+          "workgroupsPerDispatch": "4"
+        }
+      },
+      "groups": {
+        "grid": {
+          "meanMs": 0.035714430000000026,
+          "sharePct": 2.2525372100456966
+        },
+        "charge": {
+          "meanMs": 0.02946204000000002,
+          "sharePct": 1.8752517308167447
+        },
+        "pressure": {
+          "meanMs": 0.0064132099999999895,
+          "sharePct": 0.40384944319223026
+        },
+        "communication": {
+          "meanMs": 0.03210953,
+          "sharePct": 2.037216293012097
+        },
+        "localSuccessAndHealth": {
+          "meanMs": 0.029557040000000007,
+          "sharePct": 1.8812984578739196
+        },
+        "force": {
+          "meanMs": 0.94917435,
+          "sharePct": 59.919619559474114
+        },
+        "mechanics": {
+          "meanMs": 0.016017139999999996,
+          "sharePct": 1.019487092806
+        },
+        "compaction": {
+          "meanMs": 0.4811433800000001,
+          "sharePct": 30.392618511178522
+        }
+      }
+    },
+    "1000": {
+      "rounds": 5,
+      "stepMs": {
+        "median": 8.840000001192093,
+        "range": [
+          7.824999996423721,
+          9.38600000500679
+        ]
+      },
+      "stepP95Ms": 11.304999953508377,
+      "stepP99Ms": 13.488999953270056,
+      "stepsPerSecond": 83.34027835818567,
+      "particleStepsPerSecond": 83340.27835818566,
+      "gpuSumMs": {
+        "median": 2.6698557799999993,
+        "range": [
+          2.6338155,
+          2.739396370000001
+        ]
+      },
+      "gpuSpanMs": 2.700396149999999,
+      "gpuGapMs": 0.030288510000000546,
+      "gpuShareOfStep": 0.3098864671527814,
+      "zeroDurationFraction": 0,
+      "labels": {
+        "gridClear": {
+          "meanMs": 0.02472290000000001,
+          "rangeMs": [
+            0.024313770000000016,
+            0.02622873
+          ],
+          "p50Ms": 0.02375,
+          "p95Ms": 0.035420150000000004,
+          "passesPerStep": 1,
+          "sharePct": 0.9231386936556497,
+          "workgroupsPerDispatch": "ceil(cells/128)"
+        },
+        "gridBuild": {
+          "meanMs": 0.011803079999999995,
+          "rangeMs": [
+            0.011553140000000002,
+            0.012512340000000005
+          ],
+          "p50Ms": 0.0110835,
+          "p95Ms": 0.01674195,
+          "passesPerStep": 1,
+          "sharePct": 0.4481361735474636,
+          "workgroupsPerDispatch": "8"
+        },
+        "chargeProcess": {
+          "meanMs": 0.018045539999999992,
+          "rangeMs": [
+            0.01786632000000001,
+            0.018978969999999998
+          ],
+          "p50Ms": 0.0168335,
+          "p95Ms": 0.0298413,
+          "passesPerStep": 1,
+          "sharePct": 0.6830307589882434,
+          "workgroupsPerDispatch": "8"
+        },
+        "chargeFinalize": {
+          "meanMs": 0.013058970000000005,
+          "rangeMs": [
+            0.01258311,
+            0.013492270000000004
+          ],
+          "p50Ms": 0.012166,
+          "p95Ms": 0.02560385,
+          "passesPerStep": 1,
+          "sharePct": 0.4891264201544253,
+          "workgroupsPerDispatch": "8"
+        },
+        "pressure": {
+          "meanMs": 0.006914929999999996,
+          "rangeMs": [
+            0.006559089999999992,
+            0.007239009999999995
+          ],
+          "p50Ms": 0.006167,
+          "p95Ms": 0.00852915,
+          "passesPerStep": 1,
+          "sharePct": 0.2525672004650377,
+          "workgroupsPerDispatch": "1"
+        },
+        "communicationSelect": {
+          "meanMs": 0.016510599999999997,
+          "rangeMs": [
+            0.01514895000000001,
+            0.01712983
+          ],
+          "p50Ms": 0.0164165,
+          "p95Ms": 0.021474699999999992,
+          "passesPerStep": 1,
+          "sharePct": 0.6074524366840711,
+          "workgroupsPerDispatch": "8"
+        },
+        "communicationTransmit": {
+          "meanMs": 0.016622170000000006,
+          "rangeMs": [
+            0.016148940000000004,
+            0.016958040000000004
+          ],
+          "p50Ms": 0.016416,
+          "p95Ms": 0.020932649999999983,
+          "passesPerStep": 1,
+          "sharePct": 0.6190429463115628,
+          "workgroupsPerDispatch": "8"
+        },
+        "localSuccess": {
+          "meanMs": 0.01564222,
+          "rangeMs": [
+            0.01520649,
+            0.01595563
+          ],
+          "p50Ms": 0.014666,
+          "p95Ms": 0.02182814999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.579184679027841,
+          "workgroupsPerDispatch": "8"
+        },
+        "healthUpdate": {
+          "meanMs": 0.01586063,
+          "rangeMs": [
+            0.015663069999999998,
+            0.01634142
+          ],
+          "p50Ms": 0.015,
+          "p95Ms": 0.021429499999999997,
+          "passesPerStep": 1,
+          "sharePct": 0.5998985806214935,
+          "workgroupsPerDispatch": "8"
+        },
+        "force": {
+          "meanMs": 1.5573523800000002,
+          "rangeMs": [
+            1.5318760599999992,
+            1.5979458500000001
+          ],
+          "p50Ms": 1.5422259999999999,
+          "p95Ms": 1.62777915,
+          "passesPerStep": 1,
+          "sharePct": 58.20762295327773,
+          "workgroupsPerDispatch": "8"
+        },
+        "mechanics": {
+          "meanMs": 0.018466420000000008,
+          "rangeMs": [
+            0.018246330000000005,
+            0.01911631
+          ],
+          "p50Ms": 0.017916,
+          "p95Ms": 0.02271185,
+          "passesPerStep": 1,
+          "sharePct": 0.689804595818497,
+          "workgroupsPerDispatch": "8"
+        },
+        "deathCompaction": {
+          "meanMs": 0.96282921,
+          "rangeMs": [
+            0.9465810100000002,
+            0.9819912999999998
+          ],
+          "p50Ms": 0.9572765,
+          "p95Ms": 0.99705165,
+          "passesPerStep": 1,
+          "sharePct": 35.939533729678494,
+          "workgroupsPerDispatch": "8"
+        }
+      },
+      "groups": {
+        "grid": {
+          "meanMs": 0.03627604000000001,
+          "sharePct": 1.3712748672031132
+        },
+        "charge": {
+          "meanMs": 0.03135859000000002,
+          "sharePct": 1.1611149110494339
+        },
+        "pressure": {
+          "meanMs": 0.006914929999999996,
+          "sharePct": 0.2525672004650377
+        },
+        "communication": {
+          "meanMs": 0.03266530000000001,
+          "sharePct": 1.2232698202147836
+        },
+        "localSuccessAndHealth": {
+          "meanMs": 0.031569619999999986,
+          "sharePct": 1.1842586453548165
+        },
+        "force": {
+          "meanMs": 1.5573523800000002,
+          "sharePct": 58.20762295327773
+        },
+        "mechanics": {
+          "meanMs": 0.018466420000000008,
+          "sharePct": 0.689804595818497
+        },
+        "compaction": {
+          "meanMs": 0.96282921,
+          "sharePct": 35.939533729678494
+        }
+      }
+    },
+    "2000": {
+      "rounds": 5,
+      "stepMs": {
+        "median": 12.99,
+        "range": [
+          12.045000003576279,
+          14.00700000166893
+        ]
+      },
+      "stepP95Ms": 15.519999998807906,
+      "stepP99Ms": 21.112000000476893,
+      "stepsPerSecond": 61.323358065294585,
+      "particleStepsPerSecond": 122646.71613058916,
+      "gpuSumMs": {
+        "median": 4.025302090000001,
+        "range": [
+          3.9444549600000016,
+          4.080604719999999
+        ]
+      },
+      "gpuSpanMs": 4.05767322,
+      "gpuGapMs": 0.0329467999999995,
+      "gpuShareOfStep": 0.3103849969207082,
+      "zeroDurationFraction": 0,
+      "labels": {
+        "gridClear": {
+          "meanMs": 0.024829609999999995,
+          "rangeMs": [
+            0.02480631,
+            0.026745379999999996
+          ],
+          "p50Ms": 0.023833,
+          "p95Ms": 0.03692019999999999,
+          "passesPerStep": 1,
+          "sharePct": 0.6177067513811947,
+          "workgroupsPerDispatch": "ceil(cells/128)"
+        },
+        "gridBuild": {
+          "meanMs": 0.0135573,
+          "rangeMs": [
+            0.013327289999999993,
+            0.014973100000000001
+          ],
+          "p50Ms": 0.012667,
+          "p95Ms": 0.020845499999999986,
+          "passesPerStep": 1,
+          "sharePct": 0.33907726506275027,
+          "workgroupsPerDispatch": "16"
+        },
+        "chargeProcess": {
+          "meanMs": 0.020058810000000003,
+          "rangeMs": [
+            0.019184689999999997,
+            0.021258040000000006
+          ],
+          "p50Ms": 0.018416,
+          "p95Ms": 0.031237799999999996,
+          "passesPerStep": 1,
+          "sharePct": 0.5085318555646531,
+          "workgroupsPerDispatch": "16"
+        },
+        "chargeFinalize": {
+          "meanMs": 0.013583920000000003,
+          "rangeMs": [
+            0.012806499999999992,
+            0.014090599999999998
+          ],
+          "p50Ms": 0.0125,
+          "p95Ms": 0.02525,
+          "passesPerStep": 1,
+          "sharePct": 0.3362396247975716,
+          "workgroupsPerDispatch": "16"
+        },
+        "pressure": {
+          "meanMs": 0.006871609999999995,
+          "rangeMs": [
+            0.006410689999999993,
+            0.007206569999999998
+          ],
+          "p50Ms": 0.006166,
+          "p95Ms": 0.009603849999999971,
+          "passesPerStep": 1,
+          "sharePct": 0.1707104174136653,
+          "workgroupsPerDispatch": "1"
+        },
+        "communicationSelect": {
+          "meanMs": 0.01858634,
+          "rangeMs": [
+            0.016733959999999996,
+            0.0189122
+          ],
+          "p50Ms": 0.017416,
+          "p95Ms": 0.030612149999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.4609820403060431,
+          "workgroupsPerDispatch": "16"
+        },
+        "communicationTransmit": {
+          "meanMs": 0.017230609999999997,
+          "rangeMs": [
+            0.016236420000000005,
+            0.018684699999999988
+          ],
+          "p50Ms": 0.017083,
+          "p95Ms": 0.027166,
+          "passesPerStep": 1,
+          "sharePct": 0.4361707421566461,
+          "workgroupsPerDispatch": "16"
+        },
+        "localSuccess": {
+          "meanMs": 0.015712209999999997,
+          "rangeMs": [
+            0.01540973999999999,
+            0.016079780000000002
+          ],
+          "p50Ms": 0.014583,
+          "p95Ms": 0.026215999999999996,
+          "passesPerStep": 1,
+          "sharePct": 0.39142898465241943,
+          "workgroupsPerDispatch": "16"
+        },
+        "healthUpdate": {
+          "meanMs": 0.017328900000000008,
+          "rangeMs": [
+            0.017127170000000004,
+            0.018080539999999992
+          ],
+          "p50Ms": 0.016375,
+          "p95Ms": 0.023287799999999994,
+          "passesPerStep": 1,
+          "sharePct": 0.43290067702719925,
+          "workgroupsPerDispatch": "16"
+        },
+        "force": {
+          "meanMs": 1.9570993900000007,
+          "rangeMs": [
+            1.91905415,
+            1.9916214100000014
+          ],
+          "p50Ms": 1.946553,
+          "p95Ms": 2.0181052,
+          "passesPerStep": 1,
+          "sharePct": 48.63188249178065,
+          "workgroupsPerDispatch": "16"
+        },
+        "mechanics": {
+          "meanMs": 0.02368133999999999,
+          "rangeMs": [
+            0.02354459000000001,
+            0.02506459000000001
+          ],
+          "p50Ms": 0.022333,
+          "p95Ms": 0.03601665,
+          "passesPerStep": 1,
+          "sharePct": 0.5866553483939881,
+          "workgroupsPerDispatch": "16"
+        },
+        "deathCompaction": {
+          "meanMs": 1.895662839999999,
+          "rangeMs": [
+            1.8572368199999991,
+            1.9151701000000008
+          ],
+          "p50Ms": 1.8878455,
+          "p95Ms": 1.9718395,
+          "passesPerStep": 1,
+          "sharePct": 47.08475160279174,
+          "workgroupsPerDispatch": "16"
+        }
+      },
+      "groups": {
+        "grid": {
+          "meanMs": 0.03839696999999999,
+          "sharePct": 0.9583725236633565
+        },
+        "charge": {
+          "meanMs": 0.032922799999999995,
+          "sharePct": 0.8332028210052113
+        },
+        "pressure": {
+          "meanMs": 0.006871609999999995,
+          "sharePct": 0.1707104174136653
+        },
+        "communication": {
+          "meanMs": 0.03552690000000001,
+          "sharePct": 0.8825896592521332
+        },
+        "localSuccessAndHealth": {
+          "meanMs": 0.03304110999999998,
+          "sharePct": 0.8244540005595525
+        },
+        "force": {
+          "meanMs": 1.9570993900000007,
+          "sharePct": 48.63188249178065
+        },
+        "mechanics": {
+          "meanMs": 0.02368133999999999,
+          "sharePct": 0.5866553483939881
+        },
+        "compaction": {
+          "meanMs": 1.895662839999999,
+          "sharePct": 47.08475160279174
+        }
+      }
+    },
+    "5000": {
+      "rounds": 5,
+      "stepMs": {
+        "median": 25.586000006198883,
+        "range": [
+          25.221999995708465,
+          43.285999990701676
+        ]
+      },
+      "stepP95Ms": 29.40999997854233,
+      "stepP99Ms": 32.607000024318694,
+      "stepsPerSecond": 34.62244226622013,
+      "particleStepsPerSecond": 173112.21133110067,
+      "gpuSumMs": {
+        "median": 9.588396019999996,
+        "range": [
+          9.435249210000006,
+          9.603408379999996
+        ]
+      },
+      "gpuSpanMs": 9.6232488,
+      "gpuGapMs": 0.034883609999992515,
+      "gpuShareOfStep": 0.37332484758198287,
+      "zeroDurationFraction": 0,
+      "labels": {
+        "gridClear": {
+          "meanMs": 0.02504127,
+          "rangeMs": [
+            0.024629670000000003,
+            0.027518669999999995
+          ],
+          "p50Ms": 0.0239995,
+          "p95Ms": 0.03724905,
+          "passesPerStep": 1,
+          "sharePct": 0.2627868056068016,
+          "workgroupsPerDispatch": "ceil(cells/128)"
+        },
+        "gridBuild": {
+          "meanMs": 0.029606220000000013,
+          "rangeMs": [
+            0.02828958000000001,
+            0.032412029999999994
+          ],
+          "p50Ms": 0.027083,
+          "p95Ms": 0.04154485,
+          "passesPerStep": 1,
+          "sharePct": 0.30877135172812803,
+          "workgroupsPerDispatch": "40"
+        },
+        "chargeProcess": {
+          "meanMs": 0.027991259999999994,
+          "rangeMs": [
+            0.026564600000000018,
+            0.028423740000000003
+          ],
+          "p50Ms": 0.0241245,
+          "p95Ms": 0.03821185,
+          "passesPerStep": 1,
+          "sharePct": 0.2918763911597379,
+          "workgroupsPerDispatch": "40"
+        },
+        "chargeFinalize": {
+          "meanMs": 0.016513089999999998,
+          "rangeMs": [
+            0.016066380000000005,
+            0.01762473
+          ],
+          "p50Ms": 0.01525,
+          "p95Ms": 0.029333,
+          "passesPerStep": 1,
+          "sharePct": 0.1750148791247453,
+          "workgroupsPerDispatch": "40"
+        },
+        "pressure": {
+          "meanMs": 0.006720719999999997,
+          "rangeMs": [
+            0.006476559999999997,
+            0.0069157299999999975
+          ],
+          "p50Ms": 0.006083,
+          "p95Ms": 0.007895799999999963,
+          "passesPerStep": 1,
+          "sharePct": 0.07003792848872513,
+          "workgroupsPerDispatch": "1"
+        },
+        "communicationSelect": {
+          "meanMs": 0.02152631999999999,
+          "rangeMs": [
+            0.021451369999999997,
+            0.021749659999999994
+          ],
+          "p50Ms": 0.021,
+          "p95Ms": 0.033349649999999995,
+          "passesPerStep": 1,
+          "sharePct": 0.2268331424216665,
+          "workgroupsPerDispatch": "40"
+        },
+        "communicationTransmit": {
+          "meanMs": 0.020272980000000017,
+          "rangeMs": [
+            0.01881722,
+            0.02041721000000001
+          ],
+          "p50Ms": 0.019666,
+          "p95Ms": 0.030149649999999993,
+          "passesPerStep": 1,
+          "sharePct": 0.21154510144865882,
+          "workgroupsPerDispatch": "40"
+        },
+        "localSuccess": {
+          "meanMs": 0.01661137999999999,
+          "rangeMs": [
+            0.016418049999999986,
+            0.016997239999999997
+          ],
+          "p50Ms": 0.015833,
+          "p95Ms": 0.02152884999999999,
+          "passesPerStep": 1,
+          "sharePct": 0.17467932889925217,
+          "workgroupsPerDispatch": "40"
+        },
+        "healthUpdate": {
+          "meanMs": 0.023458040000000006,
+          "rangeMs": [
+            0.02288299,
+            0.023953780000000004
+          ],
+          "p50Ms": 0.022167,
+          "p95Ms": 0.0349618,
+          "passesPerStep": 1,
+          "sharePct": 0.24524771901869288,
+          "workgroupsPerDispatch": "40"
+        },
+        "force": {
+          "meanMs": 4.58452505,
+          "rangeMs": [
+            4.517212770000001,
+            4.594639029999999
+          ],
+          "p50Ms": 4.5633870000000005,
+          "p95Ms": 4.7230138,
+          "passesPerStep": 1,
+          "sharePct": 47.83973307086402,
+          "workgroupsPerDispatch": "40"
+        },
+        "mechanics": {
+          "meanMs": 0.03621694000000002,
+          "rangeMs": [
+            0.035146100000000007,
+            0.037876049999999994
+          ],
+          "p50Ms": 0.033916,
+          "p95Ms": 0.04859035,
+          "passesPerStep": 1,
+          "sharePct": 0.37771635552449817,
+          "workgroupsPerDispatch": "40"
+        },
+        "deathCompaction": {
+          "meanMs": 4.777269479999999,
+          "rangeMs": [
+            4.696072449999999,
+            4.785684429999999
+          ],
+          "p50Ms": 4.753426,
+          "p95Ms": 4.9270983,
+          "passesPerStep": 1,
+          "sharePct": 49.83318672531555,
+          "workgroupsPerDispatch": "40"
+        }
+      },
+      "groups": {
+        "grid": {
+          "meanMs": 0.05464749000000002,
+          "sharePct": 0.5699335935438349
+        },
+        "charge": {
+          "meanMs": 0.0443535,
+          "sharePct": 0.46779211796052567
+        },
+        "pressure": {
+          "meanMs": 0.006720719999999997,
+          "sharePct": 0.07003792848872513
+        },
+        "communication": {
+          "meanMs": 0.04176691000000002,
+          "sharePct": 0.43491756621517363
+        },
+        "localSuccessAndHealth": {
+          "meanMs": 0.04011445,
+          "sharePct": 0.41822151480764197
+        },
+        "force": {
+          "meanMs": 4.58452505,
+          "sharePct": 47.83973307086402
+        },
+        "mechanics": {
+          "meanMs": 0.03621694000000002,
+          "sharePct": 0.37771635552449817
+        },
+        "compaction": {
+          "meanMs": 4.777269479999999,
+          "sharePct": 49.83318672531555
+        }
+      }
+    },
+    "10000": {
+      "rounds": 5,
+      "stepMs": {
+        "median": 53.98200000286102,
+        "range": [
+          52.48899999141693,
+          62.85200000166893
+        ]
+      },
+      "stepP95Ms": 71.13000002503395,
+      "stepP99Ms": 83.59899999976163,
+      "stepsPerSecond": 16.72352665723481,
+      "particleStepsPerSecond": 167235.2665723481,
+      "gpuSumMs": {
+        "median": 19.17082974,
+        "range": [
+          19.008198709999995,
+          19.21933133
+        ]
+      },
+      "gpuSpanMs": 19.20992065,
+      "gpuGapMs": 0.03909091000000231,
+      "gpuShareOfStep": 0.35459087993723565,
+      "zeroDurationFraction": 0,
+      "labels": {
+        "gridClear": {
+          "meanMs": 0.025578740000000003,
+          "rangeMs": [
+            0.024741239999999998,
+            0.02768873
+          ],
+          "p50Ms": 0.023916,
+          "p95Ms": 0.036845449999999995,
+          "passesPerStep": 1,
+          "sharePct": 0.13448928137661617,
+          "workgroupsPerDispatch": "ceil(cells/128)"
+        },
+        "gridBuild": {
+          "meanMs": 0.04816499000000001,
+          "rangeMs": [
+            0.04668260999999999,
+            0.049266749999999984
+          ],
+          "p50Ms": 0.0442075,
+          "p95Ms": 0.058223399999999995,
+          "passesPerStep": 1,
+          "sharePct": 0.2533906065210743,
+          "workgroupsPerDispatch": "79"
+        },
+        "chargeProcess": {
+          "meanMs": 0.034734520000000005,
+          "rangeMs": [
+            0.03375778000000001,
+            0.03568775999999999
+          ],
+          "p50Ms": 0.032499,
+          "p95Ms": 0.046537449999999994,
+          "passesPerStep": 1,
+          "sharePct": 0.18262903621373464,
+          "workgroupsPerDispatch": "79"
+        },
+        "chargeFinalize": {
+          "meanMs": 0.02292965000000002,
+          "rangeMs": [
+            0.02253385000000001,
+            0.024043790000000006
+          ],
+          "p50Ms": 0.021666,
+          "p95Ms": 0.035666,
+          "passesPerStep": 1,
+          "sharePct": 0.11930513921786905,
+          "workgroupsPerDispatch": "79"
+        },
+        "pressure": {
+          "meanMs": 0.0065140799999999985,
+          "rangeMs": [
+            0.006445749999999995,
+            0.006968259999999993
+          ],
+          "p50Ms": 0.006166,
+          "p95Ms": 0.007121449999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.03393414955567174,
+          "workgroupsPerDispatch": "1"
+        },
+        "communicationSelect": {
+          "meanMs": 0.023399660000000013,
+          "rangeMs": [
+            0.022965490000000005,
+            0.024685430000000008
+          ],
+          "p50Ms": 0.022,
+          "p95Ms": 0.02592115,
+          "passesPerStep": 1,
+          "sharePct": 0.12310298496453387,
+          "workgroupsPerDispatch": "79"
+        },
+        "communicationTransmit": {
+          "meanMs": 0.023095429999999997,
+          "rangeMs": [
+            0.022771339999999998,
+            0.02344962
+          ],
+          "p50Ms": 0.023583,
+          "p95Ms": 0.0245032,
+          "passesPerStep": 1,
+          "sharePct": 0.12047172873175807,
+          "workgroupsPerDispatch": "79"
+        },
+        "localSuccess": {
+          "meanMs": 0.020091309999999994,
+          "rangeMs": [
+            0.019946310000000005,
+            0.02064712
+          ],
+          "p50Ms": 0.019417,
+          "p95Ms": 0.024186849999999985,
+          "passesPerStep": 1,
+          "sharePct": 0.10480146280825503,
+          "workgroupsPerDispatch": "79"
+        },
+        "healthUpdate": {
+          "meanMs": 0.032841169999999996,
+          "rangeMs": [
+            0.032451179999999996,
+            0.0339379
+          ],
+          "p50Ms": 0.031249,
+          "p95Ms": 0.04429485,
+          "passesPerStep": 1,
+          "sharePct": 0.17141887296694835,
+          "workgroupsPerDispatch": "79"
+        },
+        "force": {
+          "meanMs": 9.36825696,
+          "rangeMs": [
+            9.264823539999997,
+            9.39147491
+          ],
+          "p50Ms": 9.28748,
+          "p95Ms": 9.58432885,
+          "passesPerStep": 1,
+          "sharePct": 48.86473285020369,
+          "workgroupsPerDispatch": "79"
+        },
+        "mechanics": {
+          "meanMs": 0.05947663,
+          "rangeMs": [
+            0.057338280000000005,
+            0.06260824000000002
+          ],
+          "p50Ms": 0.055208,
+          "p95Ms": 0.07884449999999998,
+          "passesPerStep": 1,
+          "sharePct": 0.31024546567174305,
+          "workgroupsPerDispatch": "79"
+        },
+        "deathCompaction": {
+          "meanMs": 9.503167430000001,
+          "rangeMs": [
+            9.419107849999998,
+            9.530277779999999
+          ],
+          "p50Ms": 9.4120195,
+          "p95Ms": 9.7242682,
+          "passesPerStep": 1,
+          "sharePct": 49.586937320363056,
+          "workgroupsPerDispatch": "79"
+        }
+      },
+      "groups": {
+        "grid": {
+          "meanMs": 0.07346712,
+          "sharePct": 0.3827162450421983
+        },
+        "charge": {
+          "meanMs": 0.05732330000000002,
+          "sharePct": 0.30139754433315263
+        },
+        "pressure": {
+          "meanMs": 0.0065140799999999985,
+          "sharePct": 0.03393414955567174
+        },
+        "communication": {
+          "meanMs": 0.04679185999999996,
+          "sharePct": 0.2446600415115888
+        },
+        "localSuccessAndHealth": {
+          "meanMs": 0.05308659999999999,
+          "sharePct": 0.279282644346893
+        },
+        "force": {
+          "meanMs": 9.36825696,
+          "sharePct": 48.86473285020369
+        },
+        "mechanics": {
+          "meanMs": 0.05947663,
+          "sharePct": 0.31024546567174305
+        },
+        "compaction": {
+          "meanMs": 9.503167430000001,
+          "sharePct": 49.586937320363056
+        }
+      }
+    }
+  }
+}

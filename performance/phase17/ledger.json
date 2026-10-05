@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase17-performance-ledger",
+  "note": "Final Phase 17 ledger. Hardware: Intel HD Graphics 520, Chrome 153, --real-gpu, 5 interleaved rounds, medians; GPU ms are renderDisabled (compute isolation). Decisions: accepted | rejected | inconclusive | deferred.",
+  "entries": [
+    {
+      "id": "P17-C1",
+      "candidate": "parallel stable death compaction (--death-compaction parallel)",
+      "stage": "deathCompaction",
+      "status": "accepted-default-flipped",
+      "baselineGpuMs": {
+        "200": 0.206,
+        "500": 0.481,
+        "1000": 0.969,
+        "2000": 1.894,
+        "5000": 4.744,
+        "10000": 9.498
+      },
+      "baselineStepMs": {
+        "renderDisabled": {
+          "200": 4.0,
+          "500": 4.57,
+          "1000": 5.05,
+          "2000": 6.9,
+          "5000": 12.6,
+          "10000": 23.08
+        }
+      },
+      "change": "single-workgroup tiled inclusive scan replaces a one-invocation serial loop; same bindings/dispatch",
+      "expectedMechanism": "N dependent global loads on one lane -> N/128 coalesced tiles; ceiling ~ -1.88 ms at N=2000 (hypothesis)",
+      "actualGpuMs": {
+        "200": 0.052,
+        "500": 0.065,
+        "1000": 0.095,
+        "2000": 0.146,
+        "5000": 0.307,
+        "10000": 0.586
+      },
+      "actualStepMs": {
+        "renderDisabled": {
+          "200": 3.84,
+          "500": 4.38,
+          "1000": 4.47,
+          "2000": 5.27,
+          "5000": 7.92,
+          "10000": 14.1
+        }
+      },
+      "particleStepsPerSecond": {
+        "renderDisabled": {
+          "before": {
+            "200": 27556,
+            "500": 62120,
+            "1000": 123305,
+            "2000": 201005,
+            "5000": 318552,
+            "10000": 381825
+          },
+          "after": {
+            "200": 27782,
+            "500": 62980,
+            "1000": 130412,
+            "2000": 238749,
+            "5000": 454339,
+            "10000": 581463
+          }
+        }
+      },
+      "correctnessResult": "on-device exact-output self-test 56/56 (Intel HD Graphics 520); Node lockstep algorithm test 48/48",
+      "semanticRisk": "none by construction (identical count and ascending slot order, no atomics)",
+      "decision": "accepted",
+      "reason": "deathCompaction GPU time -75% (N=200) to -94% (N=10000), beyond noise at every N; total GPU compute -22% to -46%; end-to-end beyond noise at N>=2000 (render off) and lower per-round median frame time at N>=1000; N<=500 end-to-end within noise"
+    },
+    {
+      "id": "P17-C2",
+      "candidate": "force workgroup size 32/64/256 (--force-workgroup-size)",
+      "stage": "force",
+      "status": "rejected-default-unchanged",
+      "baselineGpuMs": {
+        "200": 0.367,
+        "500": 0.942,
+        "1000": 1.557,
+        "2000": 1.974,
+        "5000": 4.55,
+        "10000": 9.361
+      },
+      "baselineStepMs": {
+        "200": 6.101,
+        "500": 7.646,
+        "1000": 8.627,
+        "2000": 12.788
+      },
+      "change": "only @workgroup_size and dispatch geometry; kernel body unchanged",
+      "expectedMechanism": "better spread over execution units when only 2-16 workgroups exist (hypothesis; may be neutral)",
+      "actualGpuMs": {
+        "wg32": {
+          "200": 0.366,
+          "500": 0.942,
+          "1000": 1.56,
+          "2000": 1.955,
+          "5000": 4.561,
+          "10000": 9.417
+        },
+        "wg64": {
+          "200": 0.366,
+          "500": 0.951,
+          "1000": 1.568,
+          "2000": 1.984,
+          "5000": 4.578,
+          "10000": 9.364
+        },
+        "wg256": {
+          "200": 0.489,
+          "500": 1.212,
+          "1000": 1.948,
+          "2000": 2.156,
+          "5000": 4.629,
+          "10000": 9.752
+        }
+      },
+      "actualStepMs": null,
+      "particleStepsPerSecond": null,
+      "correctnessResult": "n/a - kernel body unchanged; per-particle results identical except existing nondeterministic cellHead list order",
+      "semanticRisk": "none",
+      "decision": "rejected",
+      "reason": "32 and 64 indistinguishable from 128 (|delta|<=1%, within noise); 256 slower beyond noise at every N (+1.7% to +33%). Under-occupancy hypothesis refuted on this device. Knob retained (default 128) for other architectures"
+    },
+    {
+      "id": "P17-H1",
+      "candidate": "parallelize the pressure reduction",
+      "stage": "pressure",
+      "status": "rejected",
+      "baselineGpuMs": {
+        "200": 0.006,
+        "500": 0.006,
+        "1000": 0.007,
+        "2000": 0.007
+      },
+      "baselineStepMs": {
+        "200": 6.101,
+        "500": 7.646,
+        "1000": 8.627,
+        "2000": 12.788
+      },
+      "change": null,
+      "expectedMechanism": "remove O(N) serial loop on one invocation",
+      "actualGpuMs": null,
+      "actualStepMs": null,
+      "particleStepsPerSecond": null,
+      "correctnessResult": null,
+      "semanticRisk": "f32 summation order could change outputCharge rounding",
+      "decision": "rejected",
+      "reason": "0.2-0.9% of GPU time; worker always calls setGlobalError(5.5) so the serial loop is never executed in the app path"
+    },
+    {
+      "id": "P17-D1",
+      "candidate": "parallelize reproductionCompaction (same serial pattern)",
+      "stage": "reproductionCompaction",
+      "status": "deferred",
+      "baselineGpuMs": null,
+      "baselineStepMs": null,
+      "change": null,
+      "expectedMechanism": null,
+      "actualGpuMs": null,
+      "actualStepMs": null,
+      "particleStepsPerSecond": null,
+      "correctnessResult": null,
+      "semanticRisk": null,
+      "decision": "deferred",
+      "reason": "enabled only when mating_probability>0 && particleCount<Nmax; benchmark scenario never runs it, so its cost is unmeasured"
+    },
+    {
+      "id": "P17-D2",
+      "candidate": "fuse the small passes",
+      "stage": "grid/charge/communication/localSuccess/health/mechanics/pressure",
+      "status": "deferred",
+      "baselineGpuMs": {
+        "2000": 0.169
+      },
+      "baselineStepMs": null,
+      "change": null,
+      "expectedMechanism": null,
+      "actualGpuMs": null,
+      "actualStepMs": null,
+      "particleStepsPerSecond": null,
+      "correctnessResult": null,
+      "semanticRisk": null,
+      "decision": "deferred",
+      "reason": "10 small passes total 0.17 ms before / 0.15-0.29 ms after (3-13% of GPU compute at N>=500), each near the 0.006-0.06 ms pass floor; below end-to-end noise"
+    },
+    {
+      "id": "P17-N1",
+      "candidate": "phase 18 candidates (evidence only)",
+      "stage": "-",
+      "status": "handoff",
+      "decision": "deferred",
+      "reason": "rendering (23-57% of render-on step); force kernel body (86-91% of remaining GPU compute, workgroup size excluded); 2.7-3.8 ms post-GPU step floor; unmeasured reproductionCompaction; Phase 16 hardware A/B debt; single-device coverage"
+    }
+  ]
+}

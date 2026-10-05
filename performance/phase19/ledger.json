@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "phase": 19,
+  "baseline": "Phase 18 final state with sorted-culled default (topologyMerge 'rebuild', deathCompaction 'parallel')",
+  "device": "Intel HD Graphics 520 (gen-9), Chrome 153, Windows; 2x2 design, 5 interleaved rounds x 100 steps (30 warm-up); sizes 200..10000",
+  "entries": [
+    {
+      "candidate": "P19-T1 topologyMerge=incremental",
+      "targetStage": "worker.mergeTopologyMs (render-ON step, CPU)",
+      "change": "update the worker's CPU population view in place (role, sender sets) instead of rebuilding it every step; structural path only on births/deaths",
+      "expectedMechanism": "removes per-particle Genome.clone(), ParticleState/Set/position/velocity allocations and Map insertions; the render-ON path ran this and the headless path did not",
+      "phase18Evidence": "render-ON step has 24.5-25.5 ms outside any named CPU section at N=10000 (2.2-2.5 us/particle, linear in N)",
+      "nodeMicroBenchmarkMs": {
+        "N200": [
+          0.167,
+          0.059
+        ],
+        "N2000": [
+          0.752,
+          0.206
+        ],
+        "N10000": [
+          10.904,
+          1.294
+        ],
+        "N10000_churn10pct": [
+          11.831,
+          1.785
+        ]
+      },
+      "actualEndToEnd": {
+        "stepMedianMs_renderON_rebuild_to_incremental": {
+          "200": [
+            4.7,
+            4.2
+          ],
+          "500": [
+            6.3,
+            4.4
+          ],
+          "1000": [
+            6.75,
+            4.3
+          ],
+          "2000": [
+            8.7,
+            4.6
+          ],
+          "5000": [
+            15.95,
+            6.2
+          ],
+          "10000": [
+            28.8,
+            9.5
+          ]
+        },
+        "stepsPerSecond_renderON": {
+          "200": [
+            121.5,
+            129.4
+          ],
+          "500": [
+            100.3,
+            124.9
+          ],
+          "1000": [
+            98.8,
+            130.2
+          ],
+          "2000": [
+            80.5,
+            123.6
+          ],
+          "5000": [
+            50.2,
+            105.6
+          ],
+          "10000": [
+            26.6,
+            74.2
+          ]
+        },
+        "pairedWins": "5/5 at every N for both death baselines; render-OFF control (merge not executed) is a null: ratios 0.97-1.04"
+      },
+      "correctness": "differential test vs the reference rebuild: 8 seeds x 120 randomized steps + aliasing checks, passed (Node); assumption A1 documented",
+      "decision": "keep (default in the app)",
+      "reason": "merge cost -92% (x0.085 at N=10000); render-ON step x0.33 at N=10000, x0.90 at N=200; steps/s x1.06..x2.9; 5/5 paired wins everywhere; observationally equivalent by differential test",
+      "evidence": {
+        "P18_rebuild_stepMs_renderON_r3to5": {
+          "200": 5.5,
+          "500": 5.9,
+          "1000": 7.0,
+          "2000": 9.5,
+          "5000": 16.5,
+          "10000": 30.4
+        },
+        "P19_incremental_stepMs_renderON": {
+          "200": 4.3,
+          "500": 4.63,
+          "1000": 4.35,
+          "2000": 4.68,
+          "5000": 6.6,
+          "10000": 9.75
+        },
+        "P19_mergeTopologyMs_median": {
+          "200": 0.1,
+          "500": 0.1,
+          "1000": 0.2,
+          "2000": 0.3,
+          "5000": 0.8,
+          "10000": 2.03
+        },
+        "unattributedStepMs_P18_vs_P19_at_10000": [
+          22.55,
+          0.22
+        ]
+      },
+      "actualMergeMs_median": {
+        "rebuild": {
+          "200": 0.5,
+          "500": 1.8,
+          "1000": 2.1,
+          "2000": 4.0,
+          "5000": 10.1,
+          "10000": 21.2
+        },
+        "incremental": {
+          "200": 0.1,
+          "500": 0.1,
+          "1000": 0.2,
+          "2000": 0.3,
+          "5000": 0.8,
+          "10000": 1.8
+        }
+      }
+    },
+    {
+      "candidate": "P19-D1 deathCompaction=blocked",
+      "targetStage": "deathCompaction (GPU)",
+      "change": "one 8-step scan of 256 per-chunk counts instead of one 7-step scan per 128-particle tile; skip the write pass when nothing died",
+      "expectedMechanism": "~79 tiles x 14 barriers at N=10000 become 14 barriers + two chunk walks (one when no death)",
+      "phase18Evidence": "deathCompaction 0.052 ms (N=200) -> 0.593 ms (N=10000), linear, 22% of GPU compute at N=10000",
+      "actualGpuResult": {
+        "deathCompactionMs_parallel_to_blocked": {
+          "200": [
+            0.0559,
+            0.0503
+          ],
+          "500": [
+            0.0702,
+            0.0467
+          ],
+          "1000": [
+            0.0956,
+            0.0522
+          ],
+          "2000": [
+            0.1499,
+            0.0584
+          ],
+          "5000": [
+            0.3095,
+            0.0756
+          ],
+          "10000": [
+            0.5791,
+            0.1018
+          ]
+        },
+        "gpuSumMs_parallel_to_blocked": {
+          "200": [
+            0.593,
+            0.579
+          ],
+          "1000": [
+            0.998,
+            0.952
+          ],
+          "2000": [
+            1.05,
+            0.963
+          ],
+          "5000": [
+            1.551,
+            1.312
+          ],
+          "10000": [
+            2.733,
+            2.255
+          ]
+        },
+        "pairedWins": "5/5 at every N in both replicate comparisons"
+      },
+      "actualEndToEnd": "wall clock: detectable only at N=10000 with render ON (finishNormalSync 6.2/6.3 -> 5.0 ms, step 28.8->28.0 / 9.5->8.5, 5/5 wins in the incremental comparison); render OFF shows no gain (ratio 1.02-1.05, 1-2 wins of 5) for unknown reasons; N<=5000: not resolvable",
+      "correctness": "on-device self-test PASSED: 68 death-compaction cases (17 sizes up to 100000 x 4 fractions) incl. blockedMatchesReference, 10 force cases",
+      "decision": "keep (recommend default blocked)",
+      "reason": "pass -11% (N=200) .. -82% (N=10000), GPU step -17% at N=10000; self-test passed (68 cases)"
+    },
+    {
+      "candidate": "P19-R0 render pass GPU timestamp",
+      "targetStage": "render pass (GPU)",
+      "change": "instrumentation only: label 'render', renderNs/renderMs, compute sums unchanged",
+      "decision": "implemented, measurement FAILED",
+      "reason": "0 ns in 100% of steps; indirect bound: render ON - merge - render OFF = 0.0-0.4 ms (N<=2000), 0.95-1.55 ms (N=5000), 0.1-1.55 ms (N=10000)"
+    }
+  ],
+  "rejected": [],
+  "notRun": [
+    "render pass GPU time (timestamps returned 0)",
+    "stepper-side CPU counters (stepperCpu empty: commitProfilingStep is never called by the worker)",
+    "raw await latency microbenchmark (empty submit + mapAsync)"
+  ],
+  "validity": {
+    "topologyMergeAB": "VALID in this run (worker.ts forwards topologyMerge; every per-run method.topologyMerge matches the requested mode). An earlier run had the flag silently dropped and was discarded.",
+    "deathCompactionAB": "VALID (parallel vs blocked), 2 independent paired comparisons per N (rebuild and incremental baselines).",
+    "renderTimestamp": "FAILED: the render pass reports exactly 0 ns in 100% of steps at every N (gpu.renderMs null); cause undetermined. Render cost is bounded indirectly."
+  }
+}

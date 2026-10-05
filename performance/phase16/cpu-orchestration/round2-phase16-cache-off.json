@@ -1,0 +1,66 @@
+{
+  "schema": "cepc-cpu-orchestration/1",
+  "timed": true,
+  "scope": "CPU-only JS orchestration under a no-op software GPU; not GPU time",
+  "label": "r2-p16off",
+  "orchestration": {
+    "bindGroupCache": false,
+    "packParamWrites": false
+  },
+  "stepper": "src/webgpu-mfm/src/MfmWebGPUStepper.ts",
+  "node": "v22.22.2",
+  "results": [
+    {
+      "particles": 1000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.07968514666666882,
+      "stepP50MsMedianOfRepeats": 0.06520299999999679,
+      "stepP95MsMedianOfRepeats": 0.08960300000001098,
+      "repeatMeansMs": [
+        0.0906,
+        0.0797,
+        0.0706
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0025,
+        "encode.passesMs": 0.0098,
+        "encode.snapshotMs": 0.0231,
+        "encode.writeParamsMs": 0.0031,
+        "stepUnsafe.encodeMs": 0.0614,
+        "stepUnsafe.finishNormalSyncMs": 0.0102,
+        "stepUnsafe.submitMs": 0.0034,
+        "sync.compactReadbackMs": 0.0069,
+        "sync.eventMapBuildMs": 0.0003,
+        "sync.evolutionCallbackMs": 0.0002,
+        "sync.populationUpdateMs": 0.0002
+      }
+    },
+    {
+      "particles": 10000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.6334367533333254,
+      "stepP50MsMedianOfRepeats": 0.588216999999986,
+      "stepP95MsMedianOfRepeats": 0.8043340000001535,
+      "repeatMeansMs": [
+        0.6334,
+        0.6041,
+        0.6735
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0021,
+        "encode.passesMs": 0.014,
+        "encode.snapshotMs": 0.2917,
+        "encode.writeParamsMs": 0.0069,
+        "stepUnsafe.encodeMs": 0.5873,
+        "stepUnsafe.finishNormalSyncMs": 0.0352,
+        "stepUnsafe.submitMs": 0.0082,
+        "sync.compactReadbackMs": 0.029,
+        "sync.eventMapBuildMs": 0.001,
+        "sync.evolutionCallbackMs": 0.0004,
+        "sync.populationUpdateMs": 0.0004
+      }
+    }
+  ]
+}

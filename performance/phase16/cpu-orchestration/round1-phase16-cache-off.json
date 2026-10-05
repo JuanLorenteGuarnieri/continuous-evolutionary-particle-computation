@@ -1,0 +1,66 @@
+{
+  "schema": "cepc-cpu-orchestration/1",
+  "timed": true,
+  "scope": "CPU-only JS orchestration under a no-op software GPU; not GPU time",
+  "label": "r1-p16off",
+  "orchestration": {
+    "bindGroupCache": false,
+    "packParamWrites": false
+  },
+  "stepper": "src/webgpu-mfm/src/MfmWebGPUStepper.ts",
+  "node": "v22.22.2",
+  "results": [
+    {
+      "particles": 1000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.07947158000000286,
+      "stepP50MsMedianOfRepeats": 0.06524500000000444,
+      "stepP95MsMedianOfRepeats": 0.11072599999999966,
+      "repeatMeansMs": [
+        0.0887,
+        0.0795,
+        0.072
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0026,
+        "encode.passesMs": 0.01,
+        "encode.snapshotMs": 0.0244,
+        "encode.writeParamsMs": 0.0026,
+        "stepUnsafe.encodeMs": 0.0601,
+        "stepUnsafe.finishNormalSyncMs": 0.01,
+        "stepUnsafe.submitMs": 0.0035,
+        "sync.compactReadbackMs": 0.007,
+        "sync.eventMapBuildMs": 0.0004,
+        "sync.evolutionCallbackMs": 0.0002,
+        "sync.populationUpdateMs": 0.0002
+      }
+    },
+    {
+      "particles": 10000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.644167246666669,
+      "stepP50MsMedianOfRepeats": 0.5941740000000664,
+      "stepP95MsMedianOfRepeats": 0.830235000000016,
+      "repeatMeansMs": [
+        0.6442,
+        0.6104,
+        0.6963
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.002,
+        "encode.passesMs": 0.0132,
+        "encode.snapshotMs": 0.2998,
+        "encode.writeParamsMs": 0.0069,
+        "stepUnsafe.encodeMs": 0.588,
+        "stepUnsafe.finishNormalSyncMs": 0.038,
+        "stepUnsafe.submitMs": 0.008,
+        "sync.compactReadbackMs": 0.0308,
+        "sync.eventMapBuildMs": 0.0009,
+        "sync.evolutionCallbackMs": 0.0004,
+        "sync.populationUpdateMs": 0.0003
+      }
+    }
+  ]
+}

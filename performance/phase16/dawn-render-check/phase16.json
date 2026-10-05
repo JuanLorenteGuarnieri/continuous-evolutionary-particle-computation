@@ -1,0 +1,28 @@
+{
+ "schema": "cepc-dawn-render-check/1",
+ "timed": false,
+ "adapter": "Chromium 141 / Dawn / SwiftShader (software); limits maxStorageBuffersPerShaderStage=10",
+ "tree": "phase16",
+ "protoDestroy": {
+  "GPUBuffer": "function",
+  "GPUTexture": "function",
+  "GPUQuerySet": "function",
+  "GPURenderPipeline": "undefined",
+  "GPUComputePipeline": "undefined",
+  "GPUBindGroup": "undefined",
+  "GPUBindGroupLayout": "undefined",
+  "GPUDevice": "function"
+ },
+ "errors": [],
+ "afterPingPong": {
+  "frames": 20,
+  "deviceCreateBindGroup": 2,
+  "rendererCounter": 2
+ },
+ "afterRecreate": {
+  "frames": 6,
+  "deviceCreateBindGroup": 4
+ },
+ "validationError": null,
+ "destroy": "ok"
+}

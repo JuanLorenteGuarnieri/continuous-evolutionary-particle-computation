@@ -1,0 +1,66 @@
+{
+  "schema": "cepc-cpu-orchestration/1",
+  "timed": true,
+  "scope": "CPU-only JS orchestration under a no-op software GPU; not GPU time",
+  "label": "r3-p16off",
+  "orchestration": {
+    "bindGroupCache": false,
+    "packParamWrites": false
+  },
+  "stepper": "src/webgpu-mfm/src/MfmWebGPUStepper.ts",
+  "node": "v22.22.2",
+  "results": [
+    {
+      "particles": 1000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.08095213333333617,
+      "stepP50MsMedianOfRepeats": 0.0670369999999707,
+      "stepP95MsMedianOfRepeats": 0.12018900000003896,
+      "repeatMeansMs": [
+        0.088,
+        0.081,
+        0.074
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0018,
+        "encode.passesMs": 0.0095,
+        "encode.snapshotMs": 0.0258,
+        "encode.writeParamsMs": 0.0025,
+        "stepUnsafe.encodeMs": 0.0599,
+        "stepUnsafe.finishNormalSyncMs": 0.0101,
+        "stepUnsafe.submitMs": 0.0034,
+        "sync.compactReadbackMs": 0.0069,
+        "sync.eventMapBuildMs": 0.0003,
+        "sync.evolutionCallbackMs": 0.0002,
+        "sync.populationUpdateMs": 0.0002
+      }
+    },
+    {
+      "particles": 10000,
+      "stepsPerRepeat": 150,
+      "repeats": 4,
+      "stepMeanMsMedianOfRepeats": 0.636866193333332,
+      "stepP50MsMedianOfRepeats": 0.6018360000000484,
+      "stepP95MsMedianOfRepeats": 0.8275160000000596,
+      "repeatMeansMs": [
+        0.6464,
+        0.6352,
+        0.6369
+      ],
+      "sectionsMeanMsMedianOfRepeats": {
+        "encode.bindGroupCreateMs": 0.0021,
+        "encode.passesMs": 0.0135,
+        "encode.snapshotMs": 0.3033,
+        "encode.writeParamsMs": 0.0068,
+        "stepUnsafe.encodeMs": 0.5914,
+        "stepUnsafe.finishNormalSyncMs": 0.0353,
+        "stepUnsafe.submitMs": 0.0083,
+        "sync.compactReadbackMs": 0.0287,
+        "sync.eventMapBuildMs": 0.001,
+        "sync.evolutionCallbackMs": 0.0005,
+        "sync.populationUpdateMs": 0.0004
+      }
+    }
+  ]
+}

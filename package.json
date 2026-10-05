@@ -16,6 +16,7 @@
     "validate:subset": "node tools/validate-trajectory.js configs/experiments/P0-manifest.json",
     "validate:full": "node -e \"console.log('validate full stub passed')\"",
     "benchmark": "npm run benchmark:cpu",
+    "benchmark:sync": "node --no-warnings --experimental-strip-types --experimental-loader=./tools/bench/ts-prefer-loader.mjs tools/bench/sync-accounting.mjs",
     "benchmark:cpu": "node --no-warnings --experimental-strip-types --experimental-loader=./tools/bench/ts-prefer-loader.mjs tools/bench/cpu-benchmark.mjs",
     "benchmark:webgpu": "node tools/bench/benchmark-webgpu.mjs"
   },

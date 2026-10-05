@@ -1,0 +1,11 @@
+import http from 'node:http'; import { readFileSync } from 'node:fs'; import path from 'node:path';
+import { createRequire } from 'node:module';
+const { chromium } = createRequire('/home/claude/.npm-global/lib/node_modules/')('playwright');
+const dist = process.argv[2];
+const server = http.createServer((q, r) => { const p = path.join(dist, new URL(q.url, 'http://x').pathname.slice(1) || 'index.html'); r.setHeader('content-type', p.endsWith('.js') ? 'text/javascript' : 'text/html'); r.end(readFileSync(p)); }).listen(0);
+const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--enable-unsafe-webgpu','--ignore-gpu-blocklist','--use-angle=swiftshader','--use-webgpu-adapter=swiftshader'] });
+const page = await browser.newPage(); const logs = []; page.on('console', (m) => logs.push(m.text().slice(0, 200))); page.on('pageerror', (e) => logs.push('pageerror ' + e));
+await page.goto(`http://localhost:${server.address().port}/index.html`);
+await page.waitForFunction(() => window.runRenderCheck, null, { timeout: 20000 });
+console.log(JSON.stringify(await page.evaluate(() => window.runRenderCheck()), null, 1)); if (logs.length) console.log('console:', logs.slice(0, 5));
+await browser.close(); server.close();

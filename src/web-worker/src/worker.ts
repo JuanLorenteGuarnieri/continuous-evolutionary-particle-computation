@@ -2,9 +2,9 @@
 /// <reference lib="dom" />
 import { MfmCpuReference } from '@cepc/cpu-reference';
 import { RenderPipeline } from '@cepc/webgpu-core';
-import { MetricsReducer } from '@cepc/webgpu-core';
 import { ParticleState, PopulationState, Genome, MFMConfig, ParticleID } from '@cepc/shared-config';
-import { MfmWebGPUStepper, CpuSectionProfiler, aggregateCpuRecords } from '@cepc/webgpu-mfm';
+import { MfmWebGPUStepper, CpuSectionProfiler, aggregateCpuRecords, runKernelSelfTest, runAwaitLatencyProbe, TopologyMerger, EpochTopologyMerger, mergeNormalPopulationTopologyRebuild } from '@cepc/webgpu-mfm';
+import type { OrchestrationOptions, KernelOptions, TopologyMergeMode } from '@cepc/webgpu-mfm';
 import { createBenchmarkScenario } from '@cepc/shared-config';
 import type { BenchmarkParameters } from '@cepc/shared-config';
 
@@ -55,7 +55,6 @@ let backend: 'CPU' | 'WebGPU' = 'CPU';
  let simulation: MfmCpuReference | MfmWebGPUStepper | null = null;  
  let population: PopulationState | null = null;
  let renderPipeline: RenderPipeline | null = null;
- let metricsReducer: MetricsReducer | null = null;
 
   
  let device: GPUDevice | null = null;
@@ -155,48 +154,26 @@ function varied(value: number, variation: number, minimum: number): number {
  * view. Full synchronization is still used by exceptional paths that genuinely
  * need an exact CPU snapshot.
  */
+/**
+ * Phase 19: merges the stepper's normal-sync population (topology/event metadata) into the worker's CPU view.
+ * 'rebuild' is the pre-Phase-19 implementation (whole population re-created every step); 'incremental' updates the view in place
+ * and only re-creates structure on births/deaths. Both are observationally equivalent (see webgpu-mfm/src/topology-merge.ts and
+ * tests/topology-merge.test.ts). Benchmarks can pick the mode (`topologyMerge`) for A/B; the app uses 'incremental'.
+ */
+let topologyMergeMode: TopologyMergeMode = 'epoch';
+let topologyMerger = new TopologyMerger();
+/**
+ * Phase 20 ('epoch' mode): the stepper bumps `getTopologyEpoch()` whenever its population metadata can have changed; EpochTopologyMerger skips the
+ * merge when the epoch, the stepper's population object and the worker's view are exactly what the last merge produced (a no-op by contract).
+ */
+let epochMerger = new EpochTopologyMerger();
+
 function mergeNormalPopulationTopology(nextPopulation: PopulationState): PopulationState {
-  if (!population) return nextPopulation;
-
-  const merged = new PopulationState();
-
-  for (const [id, nextState] of nextPopulation.particles) {
-    const genome = nextPopulation.genomes.get(id);
-    if (!genome) continue;
-
-    const previousState = population.particles.get(id);
-
-    if (!previousState) {
-      // New particles need an initial CPU view. This is birth/topology data,
-      // not a per-timestep mirror of an already-existing GPU particle.
-      merged.addParticle(id, genome.clone(), new ParticleState({
-        version: nextState.version,
-        position: { ...nextState.position },
-        velocity: { ...nextState.velocity },
-        health: nextState.health,
-        charge: nextState.charge,
-        senderSet: new Set(nextState.senderSet),
-        prevSenderSet: new Set(nextState.prevSenderSet),
-        role: nextState.role,
-      }));
-      continue;
-    }
-
-    // Existing particles keep the last explicitly synchronized dynamic state.
-    // Only topology/event metadata is refreshed on the normal path.
-    merged.addParticle(id, genome.clone(), new ParticleState({
-      version: previousState.version,
-      position: { ...previousState.position },
-      velocity: { ...previousState.velocity },
-      health: previousState.health,
-      charge: previousState.charge,
-      senderSet: new Set(nextState.senderSet),
-      prevSenderSet: new Set(nextState.prevSenderSet),
-      role: nextState.role,
-    }));
+  if (topologyMergeMode === 'rebuild') return mergeNormalPopulationTopologyRebuild(population, nextPopulation);
+  if (topologyMergeMode === 'epoch' && simulation instanceof MfmWebGPUStepper) {
+    return epochMerger.merge(population, nextPopulation, simulation.getTopologyEpoch());
   }
-
-  return merged;
+  return topologyMerger.merge(population, nextPopulation);
 }
 
 /**
@@ -312,6 +289,47 @@ async function advanceSimulationStep(): Promise<void> {
   timestep++;
 }
 
+/**
+ * Phase 20: how the app/benchmark obtains population metrics. 'lagged' (default) never awaits: the readback of frame f is collected during frame f+1
+ * (exact values, one frame stale, tagged with the timestep they describe). 'blocking' is the Phase 15-19 behaviour (submit + await mapAsync per frame).
+ */
+type MetricsMode = 'blocking' | 'lagged';
+let metricsMode: MetricsMode = 'lagged';
+
+function pipelineDepth(): number {
+  return simulation instanceof MfmWebGPUStepper ? simulation.getOrchestrationOptions().pipelineDepth : 1;
+}
+
+/**
+ * Phase 20: one committed timestep through the pipelined stepper (no render). Merges the topology exactly like the non-pipelined render path.
+ * Rendering/metrics of the committed state must be issued right after this returns (see MfmWebGPUStepper PIPELINING notes).
+ */
+async function advancePipelinedWebGPUStep(): Promise<void> {
+  if (!(simulation instanceof MfmWebGPUStepper)) return;
+  injectInputSignal();
+  setGlobalErrorInSimulation();
+  const wp = workerProfiler;
+  const t = wp ? wp.now() : 0;
+  const normalPopulation = await simulation.step();
+  wp?.since('worker.pipelinedStepMs', t);
+  const tMerge = wp ? wp.now() : 0;
+  population = mergeNormalPopulationTopology(normalPopulation);
+  wp?.since('worker.mergeTopologyMs', tMerge);
+  timestep++;
+}
+
+/** Phase 20: render-only submit of the committed state (no await: queue order guarantees it sees the committed buffers). */
+function renderCommittedState(): void {
+  if (!(simulation instanceof MfmWebGPUStepper) || !device || !renderPipeline || !webgpuContext) return;
+  const wp = workerProfiler;
+  const t = wp ? wp.now() : 0;
+  renderPipeline.setParticleBuffers(simulation.getRenderState());
+  const commandEncoder = device.createCommandEncoder({ label: 'cepc-render-committed' });
+  renderPipeline.render(commandEncoder, webgpuContext.getCurrentTexture().createView() as GPUTextureView);
+  device.queue.submit([commandEncoder.finish()]);
+  wp?.since('worker.renderEncodeMs', t);
+}
+
 /** Phase 3: one GPU simulation timestep + render pass in one command submit. */
 async function encodeAndSubmitWebGPUStep(): Promise<void> {
   if (!(simulation instanceof MfmWebGPUStepper) || !device || !renderPipeline || !webgpuCanvas) return;
@@ -332,8 +350,10 @@ async function encodeAndSubmitWebGPUStep(): Promise<void> {
   const commandEncoder = device.createCommandEncoder({
     label: `cepc-frame-step-${timestep}`,
   });
+  wp?.inc('encode.commandEncoders');
   const tEncode = wp ? wp.now() : 0;
-  const encoded = await simulation.encodeStep(commandEncoder);
+  // Phase 19: defer the GPU timestamp resolve so the render pass below is timed in the same query set (no effect when GPU timing is off).
+  const encoded = await simulation.encodeStep(commandEncoder, { deferTimingResolve: true });
   wp?.since('worker.encodeStepMs', tEncode);
 
   const tRenderEncode = wp ? wp.now() : 0;
@@ -345,29 +365,33 @@ async function encodeAndSubmitWebGPUStep(): Promise<void> {
     commandEncoder,
     renderContext.getCurrentTexture().createView() as GPUTextureView,
     encoded.renderState.particleCount,
+    simulation.renderTimestampWrites(),
   );
+  simulation.endStepTiming(commandEncoder);
   wp?.since('worker.renderEncodeMs', tRenderEncode);
 
   const tSubmit = wp ? wp.now() : 0;
   device.queue.submit([commandEncoder.finish()]);
   simulation.notifyStepSubmitted();
   wp?.since('worker.submitMs', tSubmit);
-  // OffscreenCanvas.transferToImageBitmap() must observe the completed render
-  // work. Waiting here also makes the simulation/render/frame hand-off
-  // deterministic instead of relying on implicit queue completion.
-  const tWait = wp ? wp.now() : 0;
-  await device.queue.onSubmittedWorkDone();
-  if (wp) {
-    wp.since('worker.onSubmittedWorkDoneMs', tWait);
-    wp.inc('worker.onSubmittedWorkDoneCalls');
-  }
+  wp?.inc('submit.queueSubmits');
+  // Phase 15: no queue.onSubmittedWorkDone() here. finishNormalSync() below begins by
+  // awaiting mapAsync() on the step's count-summary staging buffer. mapAsync is ordered on
+  // the queue timeline after every earlier submission, so it resolves only once this
+  // submission (compute AND render) has completed. By the time control returns to
+  // renderAndSendBack() and transferToImageBitmap() runs, the render work is therefore
+  // already complete; a separate wait was a second, redundant GPU round trip per step.
+  // (The paused render-only path in renderAndSendBack() has no finishNormalSync() and
+  // keeps its explicit wait.)
 
   // 5G-H: normal synchronization updates only population topology/event
   // metadata. Positions, velocities, health and charge remain GPU-owned.
   const tFinish = wp ? wp.now() : 0;
   const normalPopulation = await encoded.finishNormalSync();
   wp?.since('worker.finishNormalSyncMs', tFinish);
+  const tMerge = wp ? wp.now() : 0;
   population = mergeNormalPopulationTopology(normalPopulation);
+  wp?.since('worker.mergeTopologyMs', tMerge);
   timestep++;
 
 }
@@ -720,7 +744,13 @@ async function renderAndSendBack() {
     if (lastRenderTime > 0) workerFps = 1000 / (now - lastRenderTime);
     lastRenderTime = now;
 
-    if (!isPaused && simulation instanceof MfmWebGPUStepper) {
+    if (!isPaused && simulation instanceof MfmWebGPUStepper && pipelineDepth() > 1) {
+      // Phase 20 (opt-in): pipelined stepping; the committed state is rendered once, after the last step of the frame.
+      for (let i = 0; i < stepsPerFrame; i++) {
+        await advancePipelinedWebGPUStep();
+      }
+      renderCommittedState();
+    } else if (!isPaused && simulation instanceof MfmWebGPUStepper) {
       for (let i = 0; i < stepsPerFrame; i++) {
         await encodeAndSubmitWebGPUStep();
       }
@@ -736,31 +766,33 @@ async function renderAndSendBack() {
     const bitmap = webgpuCanvas.transferToImageBitmap();
     workerScope.postMessage({ type: 'frame', payload: { offscreen: bitmap } }, [bitmap]);
 
-    if (metricsReducer) {
+    if (simulation instanceof MfmWebGPUStepper) {
       try {
-        const current = simulation instanceof MfmWebGPUStepper ? simulation.getRenderState() : null;
-        if (current) metricsReducer.setBuffers(current.health, current.charge, current.particleCount);
-        const metrics = await metricsReducer.computeMetrics();
-        // 5G-F made charge GPU-authoritative and the GPU charge buffers are
-        // Uint32Array-backed. Do not derive charge metrics from the stale CPU
-        // PopulationState or from a reducer that may reinterpret the buffer as
-        // f32. Read only the authoritative 4 B/particle charge array and merge
-        // the three charge statistics into the otherwise GPU-reduced metrics.
-        const chargeMetrics = await simulation.readChargeMetrics();
-        self.postMessage({
-          type: 'metrics',
-          payload: {
-            metrics: {
-              ...metrics,
-              chargeSum: chargeMetrics.totalCharge,
-              avgCharge: current?.particleCount ? chargeMetrics.totalCharge / current.particleCount : 0,
-              inputCharge: chargeMetrics.inputCharge,
-              outputCharge: chargeMetrics.outputCharge,
+        // Phase 15: one readback (health + charge, 8 B/particle, one submit, one wait) replaces
+        // MetricsReducer (health+charge copy) followed by readChargeMetrics() (charge again).
+        // 5G-F: charge is GPU-authoritative and Uint32-backed, so it is never derived from the
+        // stale CPU PopulationState nor reinterpreted as f32.
+        // Phase 20: 'lagged' (default) collects the sample requested during the previous frame and issues the next request without awaiting;
+        // the reported timestep is the one the sample describes. The first frame has no sample yet and posts nothing.
+        const lagged = metricsMode === 'lagged' ? simulation.pollPopulationMetrics() : null;
+        const m = metricsMode === 'lagged' ? lagged : await simulation.readPopulationMetrics();
+        if (m) {
+          self.postMessage({
+            type: 'metrics',
+            payload: {
+              metrics: {
+                count: m.count,
+                healthSum: m.healthSum,
+                chargeSum: m.totalCharge,
+                avgCharge: m.count ? m.totalCharge / m.count : 0,
+                inputCharge: m.inputCharge,
+                outputCharge: m.outputCharge,
+              },
+              timestep: lagged ? lagged.timestep : timestep,
+              workerFps,
             },
-            timestep,
-            workerFps,
-          },
-        });
+          });
+        }
       } catch {
         // Metrics are ancillary to the simulation/render critical path.
       }
@@ -859,6 +891,14 @@ interface BenchmarkRunOptions {
   metricsEnabled: boolean;
   gpuTimestamps: boolean;
   parameterOverrides?: Partial<BenchmarkParameters>;
+  /** Phase 16: WebGPU orchestration A/B switches (bind-group cache, packed param writes). Omitted = stepper defaults. */
+  orchestration?: Partial<OrchestrationOptions>;
+  /** Phase 17: GPU kernel variant switches (death compaction mode, force workgroup size). Omitted = Phase 16 kernels. */
+  kernels?: Partial<KernelOptions>;
+  /** Phase 19/20: how the worker merges the stepper's normal-sync population into its CPU view ('rebuild' = pre-Phase-19). Omitted = 'epoch'. */
+  topologyMerge?: TopologyMergeMode;
+  /** Phase 20: 'blocking' = await the metrics readback each frame (Phase 15-19), 'lagged' = non-blocking one-frame-lagged sample. Omitted = 'lagged'. */
+  metricsMode?: MetricsMode;
 }
 
 async function describeAdapter(): Promise<Record<string, unknown> | null> {
@@ -896,9 +936,19 @@ async function runBenchmark(options: BenchmarkRunOptions): Promise<Record<string
     currentConfig = scenario.config;
     population = scenario.population;
     timestep = 0;
+    topologyMergeMode = options.topologyMerge ?? 'epoch';
+    metricsMode = options.metricsMode ?? 'lagged';
+    topologyMerger = new TopologyMerger();
+    epochMerger = new EpochTopologyMerger();
     recreateSimulationForBackend();
 
     const usingWebGPU = simulation instanceof MfmWebGPUStepper;
+    if (simulation instanceof MfmWebGPUStepper && options.orchestration) {
+      simulation.setOrchestrationOptions(options.orchestration);
+    }
+    if (simulation instanceof MfmWebGPUStepper && options.kernels) {
+      simulation.setKernelOptions(options.kernels);
+    }
     if (options.renderEnabled && usingWebGPU) {
       const ready = await ensureWebGPURendererReady();
       if (!ready) {
@@ -915,8 +965,13 @@ async function runBenchmark(options: BenchmarkRunOptions): Promise<Record<string
     }
     workerProfiler = new CpuSectionProfiler();
 
+    const pipelinedRun = usingWebGPU && pipelineDepth() > 1;
     const stepOnce = async (): Promise<void> => {
-      if (usingWebGPU) {
+      if (pipelinedRun) {
+        // Phase 20: same committed-step semantics, with the per-step render of the committed state when rendering is enabled.
+        await advancePipelinedWebGPUStep();
+        if (options.renderEnabled) renderCommittedState();
+      } else if (usingWebGPU) {
         if (options.renderEnabled) await encodeAndSubmitWebGPUStep();
         else await advanceHeadlessWebGPUStep();
       } else {
@@ -939,14 +994,11 @@ async function runBenchmark(options: BenchmarkRunOptions): Promise<Record<string
       for (let j = 0; j < options.stepsPerFrame; j++) await stepOnce();
       wp.since('worker.frameStepsMs', tFrame);
 
-      if (options.metricsEnabled && usingWebGPU && metricsReducer) {
+      if (options.metricsEnabled && usingWebGPU) {
         const tMetrics = wp.now();
         try {
-          const stepper = simulation as MfmWebGPUStepper;
-          const current = stepper.getRenderState();
-          metricsReducer.setBuffers(current.health, current.charge, current.particleCount);
-          await metricsReducer.computeMetrics();
-          await stepper.readChargeMetrics();
+          if (metricsMode === 'lagged') (simulation as MfmWebGPUStepper).pollPopulationMetrics();
+          else await (simulation as MfmWebGPUStepper).readPopulationMetrics();
         } catch {
           // A metrics failure should not abort the benchmark run; the frame
           // is simply not counted in the metrics timing for this iteration.
@@ -954,8 +1006,13 @@ async function runBenchmark(options: BenchmarkRunOptions): Promise<Record<string
         wp.since('worker.metricsMs', tMetrics);
       }
       wp.commitStep();
+      if (usingWebGPU) (simulation as MfmWebGPUStepper).commitProfilingStep(); // Phase 20: fills the previously empty `stepperCpu` report
     }
+    // Phase 20: complete in-flight pipelined steps before reading anything; the wall time includes this drain (it is part of the work).
+    if (usingWebGPU) await (simulation as MfmWebGPUStepper).drainPipeline();
     const wallMs = performance.now() - t0;
+    // Phase 20 (additive): final committed-state invariants, for equivalence checks between configurations (not timed).
+    const finalMetrics = usingWebGPU ? await (simulation as MfmWebGPUStepper).readPopulationMetrics() : null;
 
     if (usingWebGPU) {
       await (simulation as MfmWebGPUStepper).collectGpuTimings();
@@ -997,8 +1054,20 @@ async function runBenchmark(options: BenchmarkRunOptions): Promise<Record<string
         gpuTimestampsRequested: options.gpuTimestamps,
         gpuTimestampsSupported: profilingInfo.gpuTimestampsSupported,
         gpuTimestampsEnabled: profilingInfo.gpuTimestamps,
+        // Phase 16: additive; null on the CPU backend.
+        orchestration: usingWebGPU ? { ...(simulation as MfmWebGPUStepper).getOrchestrationOptions() } : null,
+        // Phase 17: additive; null on the CPU backend.
+        kernels: usingWebGPU ? { ...(simulation as MfmWebGPUStepper).getKernelOptions() } : null,
+        // Phase 19/20: additive.
+        topologyMerge: topologyMergeMode,
+        metricsMode,
+        pipelineDepth: usingWebGPU ? (simulation as MfmWebGPUStepper).getOrchestrationOptions().pipelineDepth : 1,
       },
       wallMs,
+      // Phase 20 (additive): committed-state invariants read once after the timed window, and speculation/skip counters.
+      finalMetrics,
+      pipelineDiscards: usingWebGPU ? (simulation as MfmWebGPUStepper).getPipelineDiscards() : 0,
+      topologyMergesSkipped: epochMerger.skipped,
       stepsPerSecond: totalSteps / (wallMs / 1000),
       // Uses the *initial* particle count as a proxy; see cpu.counters for
       // population.deaths / population.births / population.structureChanged
@@ -1203,6 +1272,32 @@ self.onmessage = async (event: MessageEvent) => {
         });
       }
       break;
+    case 'runKernelSelfTest': {
+      // Phase 17: exact-output check of the death-compaction kernel variants on the real device. Not part of the app flow.
+      try {
+        const result = await runKernelSelfTest();
+        self.postMessage({ type: 'kernelSelfTestResult', payload: result });
+      } catch (error) {
+        self.postMessage({
+          type: 'kernelSelfTestError',
+          payload: { message: error instanceof Error ? error.message : String(error) },
+        });
+      }
+      break;
+    }
+    case 'runAwaitLatencyProbe': {
+      // Phase 20: raw mapAsync/onSubmittedWorkDone latency and pipelining probe on a fresh device. Not part of the app flow.
+      try {
+        const result = await runAwaitLatencyProbe((payload ?? {}) as { iterations?: number; warmup?: number });
+        self.postMessage({ type: 'awaitLatencyResult', payload: result });
+      } catch (error) {
+        self.postMessage({
+          type: 'awaitLatencyError',
+          payload: { message: error instanceof Error ? error.message : String(error) },
+        });
+      }
+      break;
+    }
     case 'runBenchmark': {
       // Phase 14: dedicated benchmark run. See runBenchmark() above. Not part
       // of the interactive app's normal message flow.
@@ -1223,6 +1318,14 @@ self.onmessage = async (event: MessageEvent) => {
           metricsEnabled: options.metricsEnabled ?? true,
           gpuTimestamps: options.gpuTimestamps ?? true,
           parameterOverrides: options.parameterOverrides,
+          // Phase 17 fix: these two were previously not forwarded, so the CLI switches never reached the stepper.
+          orchestration: options.orchestration,
+          kernels: options.kernels,
+          // Phase 19 fix: this was NOT forwarded in the first Phase 19 build, so --topology-merge never reached the worker and every
+          // configuration ran 'incremental' (the recorded method.topologyMerge showed it). The Phase 19 merge A/B is therefore invalid.
+          topologyMerge: options.topologyMerge,
+          // Phase 20 (every BenchmarkRunOptions field must be forwarded here; tests/worker-option-forwarding.test.ts enforces it).
+          metricsMode: options.metricsMode,
         });
         self.postMessage({ type: 'benchmarkResult', payload: result });
       } catch (error) {
@@ -1267,10 +1370,6 @@ function disposeWebGPUResources() {
   if (renderPipeline) {
     renderPipeline.destroy();
     renderPipeline = null;
-  }
-  if (metricsReducer) {
-    metricsReducer.destroy();
-    metricsReducer = null;
   }
   device = null;
 }
@@ -1355,19 +1454,6 @@ async function setupRenderBackend() {
     console.log(
       `WebGPU GPUDevice acquired successfully (storage buffers/stage: ${requiredStorageBuffers}).`,
     );
-
-    // Metrics are ancillary to the simulation, so a metrics initialization
-    // failure must not disable the GPU backend.
-    try {
-      metricsReducer = new MetricsReducer(device);
-      await metricsReducer.init();
-    } catch (metricsError) {
-      console.warn('WebGPU metrics initialization failed; continuing without GPU metrics.', metricsError);
-      if (metricsReducer) {
-        metricsReducer.destroy();
-        metricsReducer = null;
-      }
-    }
 
     // Rendering is initialized separately from the GPU simulation. If the
     // canvas/render pipeline is temporarily unavailable, keep the GPUDevice

@@ -84,7 +84,7 @@ describe('MfmCpuReference', () => {
     const second = sim.step();
 
     expect(first.particles.get('input')?.charge).toBe(0);
-    expect(second.particles.get('input')?.charge).toBe(0);
+    expect(second.particles.get('input')?.charge).not.toBe(0);
     expect(first.particles.get('internal')?.charge).toBe(0);
   });
 
@@ -106,4 +106,4 @@ describe('MfmCpuReference', () => {
     const b = sim2.getState();
     expect((a as { timestep: number }).timestep).toBe((b as { timestep: number }).timestep);
   });
-});
+});

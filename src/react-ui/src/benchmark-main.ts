@@ -21,12 +21,27 @@ interface RunBenchmarkOptions {
   renderEnabled?: boolean;
   metricsEnabled?: boolean;
   gpuTimestamps?: boolean;
+  /** Phase 16: WebGPU orchestration A/B switches; omitted = stepper defaults. */
+  orchestration?: { bindGroupCache?: boolean; packParamWrites?: boolean };
+  /** Phase 17: GPU kernel variant switches; omitted = Phase 16 kernels. */
+  kernels?: {
+    deathCompaction?: 'serial' | 'parallel' | 'blocked';
+    forceWorkgroupSize?: 32 | 64 | 128 | 256;
+    /** Phase 18: grid-force kernel; omitted = stepper default. */
+    forceKernel?: 'linked-list' | 'sorted' | 'sorted-culled';
+  };
+  /** Phase 19: worker-side merge of the normal-sync population; omitted = 'incremental'. */
+  topologyMerge?: 'rebuild' | 'incremental' | 'epoch';
+  /** Phase 20: 'blocking' (await the metrics readback each frame) | 'lagged' (non-blocking, one frame stale; default). */
+  metricsMode?: 'blocking' | 'lagged';
 }
 
 declare global {
   interface Window {
     __cepcReady?: Promise<void>;
     __cepcRunBenchmark?: (options: RunBenchmarkOptions) => Promise<Record<string, unknown>>;
+    __cepcRunKernelSelfTest?: () => Promise<Record<string, unknown>>;
+    __cepcRunAwaitLatency?: (options?: { iterations?: number; warmup?: number }) => Promise<Record<string, unknown>>;
     __cepcSetBackend?: (backend: Backend) => Promise<void>;
     __cepcBackend?: Backend;
   }
@@ -63,6 +78,14 @@ let pendingBenchmark: {
   resolve: (value: Record<string, unknown>) => void;
   reject: (error: Error) => void;
 } | null = null;
+let pendingSelfTest: {
+  resolve: (value: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+} | null = null;
+let pendingAwaitLatency: {
+  resolve: (value: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+} | null = null;
 let sawFirstFrame = false;
 
 worker.onerror = (event) => {
@@ -78,6 +101,26 @@ worker.onmessage = (event: MessageEvent) => {
       setStatus('worker ready');
       readyResolve();
     }
+    return;
+  }
+  if (type === 'kernelSelfTestResult') {
+    pendingSelfTest?.resolve(payload as Record<string, unknown>);
+    pendingSelfTest = null;
+    return;
+  }
+  if (type === 'kernelSelfTestError') {
+    pendingSelfTest?.reject(new Error((payload as { message?: string })?.message ?? 'unknown self-test error'));
+    pendingSelfTest = null;
+    return;
+  }
+  if (type === 'awaitLatencyResult') {
+    pendingAwaitLatency?.resolve(payload as Record<string, unknown>);
+    pendingAwaitLatency = null;
+    return;
+  }
+  if (type === 'awaitLatencyError') {
+    pendingAwaitLatency?.reject(new Error((payload as { message?: string })?.message ?? 'unknown await-latency error'));
+    pendingAwaitLatency = null;
     return;
   }
   if (type === 'benchmarkResult') {
@@ -104,6 +147,22 @@ worker.postMessage(
   },
   [offscreen, webgpuCanvas],
 );
+
+window.__cepcRunKernelSelfTest = (): Promise<Record<string, unknown>> => {
+  if (pendingSelfTest) return Promise.reject(new Error('A kernel self-test is already pending'));
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    pendingSelfTest = { resolve, reject };
+    worker.postMessage({ type: 'runKernelSelfTest' });
+  });
+};
+
+window.__cepcRunAwaitLatency = (options?: { iterations?: number; warmup?: number }): Promise<Record<string, unknown>> => {
+  if (pendingAwaitLatency) return Promise.reject(new Error('An await-latency probe is already pending'));
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    pendingAwaitLatency = { resolve, reject };
+    worker.postMessage({ type: 'runAwaitLatencyProbe', payload: options ?? {} });
+  });
+};
 
 window.__cepcRunBenchmark = (options: RunBenchmarkOptions): Promise<Record<string, unknown>> => {
   if (pendingBenchmark) {
