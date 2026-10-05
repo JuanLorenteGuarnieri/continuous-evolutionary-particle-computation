@@ -30,6 +30,18 @@
          run: pnpm run typecheck
        - name: Build UI
          run: pnpm run build
+       - name: Verify build output
+         run: |
+           echo "Checking build output in src/react-ui/dist"
+           ls -la src/react-ui/dist/
+           if [ ! -d "src/react-ui/dist" ]; then
+             echo "ERROR: Build directory not found!"
+             exit 1
+           fi
+           if [ ! -f "src/react-ui/dist/index.html" ]; then
+             echo "ERROR: index.html not found in build output!"
+             exit 1
+           fi
        - name: Upload artifact
          uses: actions/upload-pages-artifact@v3
          with:
